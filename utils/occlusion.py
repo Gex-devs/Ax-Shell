@@ -56,6 +56,41 @@ def get_screen_dimensions():
     # Default fallback values
     return data.CURRENT_WIDTH, data.CURRENT_HEIGHT
 
+def get_screen_position():
+    """
+    Gets current active windows screen position
+
+    Returns:
+        Tuple: (Position x, Position y) of the current monitor workspace
+    """
+    try:
+        # Get current workspace
+        workspace_id = get_current_workspace()
+        
+        # Get monitor information
+        result = subprocess.run(
+            ["hyprctl", "-j", "monitors"],
+            capture_output=True,
+            text=True
+        )
+        monitors = json.loads(result.stdout)
+        
+        # Find the monitor containing our workspace
+        for monitor in monitors:
+            if monitor.get("activeWorkspace", {}).get("id") == workspace_id:
+                return monitor.get("x", data.CURRENT_X), monitor.get("y", data.CURRENT_Y)
+                
+        # Fallback to first monitor
+        if monitors:
+            return monitors[0].get("x", data.CURRENT_X), monitors[0].get("y", data.CURRENT_Y)
+    except Exception as e:
+        print(f"Error getting screen position: {e}")
+    
+    # Default fallback values
+    return data.CURRENT_X, data.CURRENT_Y
+
+
+
 def check_occlusion(occlusion_region, workspace=None):
     """
     Check if a region is occupied by any window on a given workspace.
@@ -79,11 +114,13 @@ def check_occlusion(occlusion_region, workspace=None):
         if isinstance(side, str):
             # Convert side-based format to coordinates
             screen_width, screen_height = get_screen_dimensions()
-            
+            screen_x , screen_y = get_screen_position()
+
+            # Only implemented for top side dock, for now
             if side.lower() == "bottom":
-                occlusion_region = (0, screen_height - size, screen_width, size)
+                occlusion_region = (0, screen_height, screen_width, size)
             elif side.lower() == "top":
-                occlusion_region = (0, 0, screen_width, size)
+                occlusion_region = (screen_x, screen_y, screen_width, size)
             elif side.lower() == "left":
                 occlusion_region = (0, 0, size, screen_height)
             elif side.lower() == "right":
