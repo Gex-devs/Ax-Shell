@@ -289,7 +289,11 @@ class VolumeSmall(Box):
             end_angle=390,
         )
         self.vol_label = Label(name="vol-label", markup=icons.vol_high)
-        self.vol_button = Button(on_clicked=self.toggle_mute, child=self.vol_label)
+        self.vol_button = Button(
+            # on_clicked=self.toggle_mute,
+            child=self.vol_label,
+            on_button_press_event=self.mouse_click_event,
+        )
         self.event_box = EventBox(
             events=["scroll", "smooth-scroll"],
             child=Overlay(child=self.progress_bar, overlays=self.vol_button),
@@ -319,6 +323,15 @@ class VolumeSmall(Box):
                 self.on_speaker_changed()
                 self.progress_bar.remove_style_class("muted")
                 self.vol_label.remove_style_class("muted")
+    
+    def mouse_click_event(self, widget, event):
+        if event.button == 1:
+            print("Left Click")
+            self.toggle_mute(self)
+        elif event.button == 3:
+            # Volume control should go here
+            print("Right click")
+
 
     def on_scroll(self, _, event):
         if not self.audio.speaker:

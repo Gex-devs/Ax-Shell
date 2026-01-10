@@ -319,11 +319,19 @@ class Notch(Window):
                 self.active_window_box,
                 self.player_small,
                 # Add audio display widgets to compact stack
-                self.volume_box,
-                self.mic_box,
+
+                # Removed it. Makes it ugly
+
+                # self.volume_box,
+                # self.mic_box,
             ],
         )
-        self.compact_stack.set_visible_child(self.active_window_box)
+
+        # If there's nothing playing, Notch active window else notch cava
+        if len(self.player_small.mpris_manager.players) == 0:
+            self.compact_stack.set_visible_child(self.active_window_box)
+        else:
+            self.compact_stack.set_visible_child(self.player_small)
 
         self.compact = Gtk.EventBox(name="notch-compact")
         self.compact.set_visible(True)
