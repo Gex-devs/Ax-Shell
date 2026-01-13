@@ -11,8 +11,50 @@ import config.data as data
 
 logger = logging.getLogger(__name__)
 
+# --- Global State ---
+_watcher = None
+_items_by_id = {}
+_instances = []
+
+def _refresh_ui_for_all_instances(identifier: str, item: Gray.Item):
+    for instance in _instances:
+        btn = instance.buttons_by_id.get(identifier)
+        if btn:
+            instance._refresh_item_ui(identifier, item, btn)
+
+def _global_on_watcher_item_added(_, identifier: str):
+    item = _watcher.get_item_for_identifier(identifier)
+    if not item:
+        return
+
+    _items_by_id[identifier] = item
+
+    def on_item_removed(removed_item):
+        if _items_by_id.get(identifier) is removed_item:
+            _items_by_id.pop(identifier, None)
+            for instance in _instances:
+                instance.on_item_instance_removed(identifier, removed_item)
+
+    item.connect("removed", lambda itm: on_item_removed(itm))
+    item.connect("notify::icon-pixmaps", lambda itm, pspec: _refresh_ui_for_all_instances(identifier, itm))
+    item.connect("notify::icon-name", lambda itm, pspec: _refresh_ui_for_all_instances(identifier, itm))
+    try:
+        item.connect("updated", lambda itm: _refresh_ui_for_all_instances(identifier, itm))
+    except TypeError:
+        pass
+
+    for instance in _instances:
+        instance.on_item_added(identifier)
+
+def _init_watcher():
+    global _watcher
+    if _watcher is None:
+        _watcher = Gray.Watcher()
+        _watcher.connect("item-added", _global_on_watcher_item_added)
+
+
 class SystemTray(Box):
-    def __init__(self, pixel_size: int = 20, **kwargs) -> None:
+    def __init__(self, pixel_size: int = 20, refresh_interval: int = 1, **kwargs) -> None:
         orientation = Gtk.Orientation.HORIZONTAL if not data.VERTICAL else Gtk.Orientation.VERTICAL
         super().__init__(
             name="systray",
@@ -23,11 +65,22 @@ class SystemTray(Box):
         self.enabled = True
         super().set_visible(False)
         self.pixel_size = pixel_size
-        self.buttons_by_id = {}
-        self.items_by_id = {}
+        self.refresh_interval = refresh_interval
 
-        self.watcher = Gray.Watcher()
-        self.watcher.connect("item-added", self.on_watcher_item_added)
+        self.buttons_by_id = {}
+
+        _instances.append(self)
+        _init_watcher()
+
+        for identifier in list(_items_by_id.keys()):
+            self.on_item_added(identifier)
+
+        GLib.timeout_add_seconds(self.refresh_interval, self._refresh_all_items)
+        self.connect("destroy", self._on_destroy)
+
+    def _on_destroy(self, *args):
+        if self in _instances:
+            _instances.remove(self)
 
     def set_visible(self, visible: bool):
         self.enabled = visible
@@ -67,7 +120,7 @@ class SystemTray(Box):
                 "image-missing", self.pixel_size, Gtk.IconLookupFlags.FORCE_SIZE
             )
 
-    def _refresh_item_ui(self, item: Gray.Item, button: Gtk.Button):
+    def _refresh_item_ui(self, identifier: str, item: Gray.Item, button: Gtk.Button):
         pixbuf = self._get_item_pixbuf(item)
         img = button.get_image()
         if isinstance(img, Gtk.Image):
@@ -86,31 +139,24 @@ class SystemTray(Box):
         else:
             button.set_has_tooltip(False)
 
-    def on_watcher_item_added(self, _, identifier: str):
-        item = self.watcher.get_item_for_identifier(identifier)
+    def _refresh_all_items(self) -> bool:
+        for ident, btn in self.buttons_by_id.items():
+            item = _items_by_id.get(ident)
+            if item:
+                self._refresh_item_ui(ident, item, btn)
+        return True
+
+    def on_item_added(self, identifier: str):
+        item = _items_by_id.get(identifier)
         if not item:
             return
 
         if identifier in self.buttons_by_id:
             self.buttons_by_id[identifier].destroy()
             del self.buttons_by_id[identifier]
-            del self.items_by_id[identifier]
 
         btn = self.do_bake_item_button(item)
         self.buttons_by_id[identifier] = btn
-        self.items_by_id[identifier] = item
-
-        item.connect("notify::icon-pixmaps",
-                     lambda itm, pspec: self._refresh_item_ui(itm, btn))
-        item.connect("notify::icon-name",
-                     lambda itm, pspec: self._refresh_item_ui(itm, btn))
-
-        try:
-            item.connect("icon-changed", lambda itm: self._refresh_item_ui(itm, btn))
-        except TypeError:
-            pass
-
-        item.connect("removed", lambda itm: self.on_item_instance_removed(identifier, itm))
 
         self.add(btn)
         btn.show_all()
@@ -127,12 +173,10 @@ class SystemTray(Box):
         return btn
 
     def on_item_instance_removed(self, identifier: str, removed_item: Gray.Item):
-        if self.items_by_id.get(identifier) is removed_item:
-            btn = self.buttons_by_id.pop(identifier, None)
-            self.items_by_id.pop(identifier, None)
-            if btn:
-                btn.destroy()
-            self._update_visibility()
+        btn = self.buttons_by_id.pop(identifier, None)
+        if btn:
+            btn.destroy()
+        self._update_visibility()
 
     def on_button_click(self, button: Gtk.Button, item: Gray.Item, event: Gdk.EventButton):
         if event.button == Gdk.BUTTON_PRIMARY:
