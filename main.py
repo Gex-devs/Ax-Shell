@@ -2,6 +2,8 @@ import os
 
 import gi
 
+from services.logitech import Logitech
+
 gi.require_version("GLib", "2.0")
 import setproctitle
 from fabric import Application
@@ -86,6 +88,13 @@ if __name__ == "__main__":
             print("Ax-Shell: No valid selected monitors found, falling back to all monitors")
             monitors = all_monitors
     
+    try:
+
+        logitech = Logitech.get_initial()
+    except Exception as e:
+        print(f"Error initializing Logitech service: {e}")
+        logitech = None
+
     # Create application components list
     app_components = []
     corners = None
@@ -96,7 +105,7 @@ if __name__ == "__main__":
         monitor_id = monitor['id']
         
         #TODO: Add it in config.json as an option
-        primaryMonitor_id = 1
+        primaryMonitor_id = 0
 
         # Create corners only for the primary monitor (shared across all)
         if monitor_id == primaryMonitor_id:

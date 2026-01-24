@@ -93,6 +93,9 @@ notifications_clear: str = "&#xf814;"
 download: str = "&#xea96;"
 upload: str = "&#xeb47;"
 
+windows_off: str = "&#xecd8;"
+windows_on: str = "&#x10084;"
+
 # Bluetooth
 bluetooth_connected: str = "&#xecea;"
 bluetooth_disconnected: str = "&#xf081;"

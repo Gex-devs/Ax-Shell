@@ -22,8 +22,9 @@ from modules.metrics import Battery, MetricsSmall, NetworkApplet
 from modules.systemprofiles import Systemprofiles
 from modules.systemtray import SystemTray
 from modules.weather import Weather
+from modules.windowsvm import WindowsVm
 from widgets.wayland import WaylandWindow as Window
-
+from services.logitech import Logitech
 CHINESE_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "〇"]
 
 # Tooltips
@@ -101,8 +102,8 @@ class Bar(Window):
 
         # Calculate workspace range based on monitor_id
         # Monitor 0: workspaces 1-10, Monitor 1: workspaces 11-20, etc.
-        start_workspace = self.monitor_id * 5  + 1
-        end_workspace = start_workspace + 5 
+        start_workspace = self.monitor_id * 1   + 1
+        end_workspace = start_workspace + 1  
         workspace_range = range(start_workspace, end_workspace)
 
         self.workspaces = Workspaces(
@@ -187,6 +188,8 @@ class Bar(Window):
         self.sysprofiles = Systemprofiles()
 
         self.network = NetworkApplet()
+
+        self.windowsvm = WindowsVm()
 
         self.lang_label = Label(name="lang-label")
         self.language = Button(
@@ -278,6 +281,7 @@ class Bar(Window):
             self.weather,
             self.sysprofiles,
             self.network,
+            self.windowsvm,
         ]
 
         self.revealer_left = Revealer(
@@ -322,6 +326,7 @@ class Bar(Window):
             self.control,
             self.sysprofiles,
             self.network,
+            self.windowsvm,
             self.button_tools,
         ]
 
