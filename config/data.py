@@ -19,11 +19,14 @@ HOME_DIR = os.path.expanduser("~")
 CONFIG_DIR = os.path.expanduser(f"~/.config/{APP_NAME}")
 
 screen = Gdk.Screen.get_default()
-CURRENT_WIDTH = screen.get_width()
-CURRENT_HEIGHT = screen.get_height()
-# X and Y position of the monitor
-CURRENT_X = 0
-CURRENT_Y = 0
+CURRENT_WIDTH = 0
+CURRENT_HEIGHT = 0
+if screen is not None:
+    try:
+        CURRENT_WIDTH = screen.get_width()
+        CURRENT_HEIGHT = screen.get_height()
+    except Exception as e:
+        print(f"Ax-Shell: Unable to read screen size: {e}")
 
 CONFIG_FILE = get_relative_path("../config/config.json")
 MATUGEN_STATE_FILE = os.path.join(CONFIG_DIR, "matugen")

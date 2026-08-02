@@ -131,7 +131,7 @@ class Notch(Window):
         super().__init__(
             name="notch",
             layer="overlay",
-            anchor=anchor_val,
+            anchor="top",
             margin=current_margin_str,
             keyboard_mode="none",
             exclusivity="none" if data.PANEL_THEME == "Notch" else "normal",
@@ -139,7 +139,8 @@ class Notch(Window):
             all_visible=True,
             monitor=monitor_id,
         )
-
+        self.set_name("DEBUG-NOTCH_ROOT")
+        
         # Audio display variables
         self.VOLUME_DISPLAY_DURATION = 2000
         self._current_display_timeout_id = None
@@ -474,13 +475,19 @@ class Notch(Window):
             children=self.notch_children,
         )
 
+
+
+
+
+
+
         # Create top-level EventBox that wraps the entire notch for hover detection
+        # --- NEW ROOT PACKING LOGIC ---
         if data.PANEL_THEME == "Notch":
             self.hover_eventbox = Gtk.EventBox(name="notch-hover-eventbox")
             self.hover_eventbox.add(self.notch_wrap)
             self.hover_eventbox.set_visible(True)
-            # Set minimum size to ensure hover detection area is always available
-            self.hover_eventbox.set_size_request(260, 4)  # Width matches compact size, min height for hover
+            self.hover_eventbox.set_size_request(260, 4)
             self.hover_eventbox.add_events(
                 Gdk.EventMask.ENTER_NOTIFY_MASK | Gdk.EventMask.LEAVE_NOTIFY_MASK
             )
@@ -490,19 +497,55 @@ class Notch(Window):
             self.hover_eventbox.connect(
                 "leave-notify-event", self.on_notch_hover_area_leave
             )
-            self.add(self.hover_eventbox)
+            inner_content = self.hover_eventbox
         else:
-            self.add(self.notch_wrap)
+            inner_content = self.notch_wrap
+
+        # 1. Prevent clicks inside the notch from bubbling up
+        inner_content.connect("button-press-event", lambda *_: True)
+
+        # 2. Dynamically align based on your anchor_val
+        # x_align, y_align = 0.5, 0.0
+        # if "left" in anchor_val: x_align = 0.0
+        # elif "right" in anchor_val: x_align = 1.0
+        # if "bottom" in anchor_val: y_align = 1.0
+        # elif "top" in anchor_val: y_align = 0.0
+        # elif anchor_val in ["left", "right"]: y_align = 0.5
+
+        # alignment = Gtk.Alignment(xalign=x_align, yalign=y_align, xscale=0.0, yscale=0.0)
+        # alignment.add(inner_content)
+
+        # # 3. Transparent background catcher
+        # bg_catcher = Gtk.EventBox()
+        # bg_catcher.connect("button-press-event", lambda *_: self.close_notch())
+        # bg_catcher.add(alignment)
+
+        # self.add(bg_catcher)
+        # self.show_all()
+        # self.add(alignment)
+        # self.show_all()
+
+        self.add(inner_content)
         self.show_all()
+
+        self.backdrop = NotchBackdrop(notch_instance=self, monitor_id=monitor_id)
 
         # Connect audio signals after a short delay
         GLib.timeout_add(100, self._connect_audio_signals)
 
         self.add_keybinding("Escape", lambda *_: self.close_notch())
+        # NOTE: focus-out-event listener has been removed from here
         self.add_keybinding("Ctrl Tab", lambda *_: self.dashboard.go_to_next_child())
         self.add_keybinding(
             "Ctrl Shift ISO_Left_Tab", lambda *_: self.dashboard.go_to_previous_child()
         )
+
+
+
+
+
+
+
 
         self.update_window_icon()
 
@@ -554,6 +597,7 @@ class Notch(Window):
             GLib.timeout_add(1000, lambda: self._connect_audio_signals(retry_count + 1))
         
         return False
+
 
     def _on_speaker_changed(self, audio_service, speaker):
         if self.audio.speaker:
@@ -834,6 +878,8 @@ class Notch(Window):
             self.monitor_manager.set_notch_state(self.monitor_id, False)
             
         self.set_keyboard_mode("none")
+        if hasattr(self, "backdrop") and self.backdrop:
+            self.backdrop.hide()
         self.notch_box.remove_style_class("open")
         self.stack.remove_style_class("open")
 
@@ -920,7 +966,8 @@ class Notch(Window):
         self._focused_monitor_result = None
     
     def _open_notch_internal(self, widget_name: str):
-        
+        if hasattr(self, "backdrop") and self.backdrop:
+            self.backdrop.show_all()
         self.notch_revealer.set_reveal_child(True)
         self.notch_box.add_style_class("open")
         self.stack.add_style_class("open")
@@ -936,7 +983,12 @@ class Notch(Window):
                     self.close_notch()
                     return
 
-                self.set_keyboard_mode("exclusive")
+                self.set_keyboard_mode("on-demand")
+                def force_focus():
+                    self.present()
+                    self.grab_focus()
+                    return False
+                GLib.timeout_add(50, force_focus)
                 self.dashboard.go_to_section("widgets")
                 self.applet_stack.set_visible_child(self.nwconnections)
                 return
@@ -950,7 +1002,12 @@ class Notch(Window):
                     self.close_notch()
                     return
 
-                self.set_keyboard_mode("exclusive")
+                self.set_keyboard_mode("on-demand")
+                def force_focus():
+                    self.present()
+                    self.grab_focus()
+                    return False
+                GLib.timeout_add(50, force_focus)
                 self.dashboard.go_to_section("widgets")
                 self.applet_stack.set_visible_child(self.btdevices)
                 return
@@ -964,7 +1021,12 @@ class Notch(Window):
                     self.close_notch()
                     return
 
-                self.set_keyboard_mode("exclusive")
+                self.set_keyboard_mode("on-demand")
+                def force_focus():
+                    self.present()
+                    self.grab_focus()
+                    return False
+                GLib.timeout_add(50, force_focus)
                 self.dashboard.go_to_section("widgets")
                 self.applet_stack.set_visible_child(self.nhistory)
                 return
@@ -1033,12 +1095,21 @@ class Notch(Window):
             hide_bar_revealers = True
 
         self.set_keyboard_mode("exclusive")
+        self.present()
         self.stack.set_visible_child(target_widget_on_stack)
 
         if action_on_open:
             action_on_open()
+        def force_focus_main():
+            if focus_action:
+                focus_action()
+            self.set_keyboard_mode("on-demand")
+        GLib.timeout_add(50, force_focus_main)
+
+        if action_on_open:
+            action_on_open()
         if focus_action:
-            focus_action()
+            GLib.timeout_add(50, lambda:(focus_action(), False)[1])
 
         if target_widget_on_stack == self.dashboard:
             if widget_name == "bluetooth":
@@ -1453,3 +1524,34 @@ class Notch(Window):
                 return True
 
         return False
+
+class NotchBackdrop(Window):
+    def __init__(self, notch_instance, monitor_id: int = 0):
+        self.notch = notch_instance
+        
+        super().__init__(
+            name="notch-backdrop",
+            layer="top",
+            anchor="top bottom left right",
+            keyboard_mode="none",
+            pass_through=False,
+            visible=False, # HIDDEN BY DEFAULT -> Passes all clicks to desktop
+            all_visible=False,
+            monitor=monitor_id,
+        )
+        
+        # Click catcher overlay
+        bg_catcher = Gtk.EventBox()
+        bg_catcher.connect("button-press-event", lambda *_: self.notch.close_notch())
+
+        bg_box = Box(
+            h_expand=True,
+            v_expand=True,
+            style="background-color: rgba(0, 0, 0, 0.5);",  # Semi-transparent black
+        )
+        bg_catcher.add(bg_box)
+        self.add(bg_catcher)
+        
+        # Show ONLY the internal widget.
+        # Do not call self.show_all() so the Window never maps to Wayland on boot.
+        

@@ -4,6 +4,7 @@ import hashlib
 import os
 import random  # <--- AÑADIDO
 import shutil
+import subprocess
 from concurrent.futures import ThreadPoolExecutor
 
 from fabric.utils.helpers import exec_shell_command_async
@@ -56,7 +57,7 @@ class WallpaperSelector(Box):
         self.viewport.set_text_column(-1)
         self.viewport.set_item_width(0)
         self.viewport.connect("item-activated", self.on_wallpaper_selected)
-        # self.viewport.connect("selection-changed", self._on_selection_changed) # Removed connection
+        self.viewport.connect("selection-changed", self._on_selection_changed)
 
         self.scrolled_window = ScrolledWindow(
             name="scrolled-window",
@@ -269,6 +270,64 @@ class WallpaperSelector(Box):
         if isinstance(label, Label):
             label.set_markup(chosen_icon)
 
+    def _apply_wallpaper(self, full_path: str, selected_scheme: str | None = None):
+        current_wall = os.path.expanduser("~/.current.wall")
+        if os.path.isfile(current_wall) or os.path.islink(current_wall):
+            os.remove(current_wall)
+        os.symlink(full_path, current_wall)
+
+        # Prefer Hyprland's wallpaper keyword if available.
+        try:
+            subprocess.run(
+                ["hyprctl", "keyword", "wallpaper", f"{full_path}"],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except Exception as exc:
+            print(f"Warning: hyprctl wallpaper command failed: {exc}")
+
+        # Keep optional theme/color generation if the user has Matugen enabled.
+        if self.matugen_switcher.get_active() and selected_scheme:
+            try:
+                subprocess.run(
+                    ["matugen", "image", full_path, "-t", selected_scheme],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                )
+            except Exception as exc:
+                print(f"Warning: matugen failed for wallpaper {full_path}: {exc}")
+
+        # Also try awww if present, but do not depend on it.
+        if os.path.exists("/tmp/hypr"):
+            try:
+                subprocess.run(
+                    [
+                        "awww",
+                        "img",
+                        full_path,
+                        "-t",
+                        "outer",
+                        "--transition-duration",
+                        "1.5",
+                        "--transition-step",
+                        "255",
+                        "--transition-fps",
+                        "60",
+                        "-f",
+                        "Nearest",
+                    ],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=20,
+                )
+            except Exception as exc:
+                print(f"Warning: awww failed for wallpaper {full_path}: {exc}")
+
     def set_random_wallpaper(self, widget, external=False):
         if not self.files:
             print("No wallpapers available to set a random one.")
@@ -277,22 +336,7 @@ class WallpaperSelector(Box):
         file_name = random.choice(self.files)
         full_path = os.path.join(data.WALLPAPERS_DIR, file_name)
         selected_scheme = self.scheme_dropdown.get_active_id()
-        current_wall = os.path.expanduser(f"~/.current.wall")
-
-        if os.path.isfile(current_wall) or os.path.islink(
-            current_wall
-        ):  # Check for link too
-            os.remove(current_wall)
-        os.symlink(full_path, current_wall)
-
-        if self.matugen_switcher.get_active():
-            exec_shell_command_async(
-                f'matugen image "{full_path}" -t {selected_scheme}'
-            )
-        else:
-            exec_shell_command_async(
-                f'awww img "{full_path}" -t outer --transition-duration 1.5 --transition-step 255 --transition-fps 60 -f Nearest'
-            )
+        self._apply_wallpaper(full_path, selected_scheme)
 
         print(f"Set random wallpaper: {file_name}")
 
@@ -366,25 +410,27 @@ class WallpaperSelector(Box):
         elif len(model) > 0:
             self.update_selection(0)
 
-    def on_wallpaper_selected(self, iconview, path):
-        model = iconview.get_model()
-        file_name = model[path][1]
+    def _on_selection_changed(self, iconview):
+        selection = iconview.get_selected_items()
+        if not selection:
+            return
+        path = selection[0]
+        self._apply_wallpaper_from_path(path)
+
+    def _apply_wallpaper_from_path(self, path):
+        model = self.viewport.get_model()
+        if path is None:
+            return
+        try:
+            file_name = model[path][1]
+        except Exception:
+            return
         full_path = os.path.join(data.WALLPAPERS_DIR, file_name)
         selected_scheme = self.scheme_dropdown.get_active_id()
-        current_wall = os.path.expanduser(f"~/.current.wall")
-        if os.path.isfile(current_wall) or os.path.islink(current_wall):
-            os.remove(current_wall)
-        os.symlink(full_path, current_wall)
-        if self.matugen_switcher.get_active():
-            # Matugen is enabled: run the normal command.
-            exec_shell_command_async(
-                f'matugen image "{full_path}" -t {selected_scheme}'
-            )
-        else:
-            # Matugen is disabled: run the alternative awww command.
-            exec_shell_command_async(
-                f'awww img "{full_path}" -t outer --transition-duration 1.5 --transition-step 255 --transition-fps 60 -f Nearest'
-            )
+        self._apply_wallpaper(full_path, selected_scheme)
+
+    def on_wallpaper_selected(self, iconview, path):
+        self._apply_wallpaper_from_path(path)
 
     def on_scheme_changed(self, combo):
         selected_scheme = combo.get_active_id()

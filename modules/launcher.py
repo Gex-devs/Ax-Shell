@@ -4,10 +4,13 @@ import operator
 import os
 import re
 import subprocess
+import urllib.parse
+import webbrowser
+import shlex
 from collections.abc import Iterator
 
 import numpy as np
-from fabric.utils import (DesktopApp, exec_shell_command_async,
+from fabric.utils import (DesktopApp, exec_shell_command_async,exec_shell_command,
                           get_desktop_applications, idle_add, remove_handler)
 from fabric.utils.helpers import get_relative_path
 from fabric.widgets.box import Box
@@ -28,6 +31,34 @@ tooltip_settings = f"<b>Open {data.APP_NAME_CAP} Settings</b>"
 tooltip_close = "<b>Close</b>"
 
 class AppLauncher(Box):
+    def bake_custom_action_slot(self, icon_symbol: str, title: str, subtitle: str, on_click) -> Button:
+        return Button(
+            name="slot-button",
+            child=Box(
+                name="slot-box",
+                orientation="h",
+                spacing=10,
+                children=[
+                    Label(name="app-icon", label=icon_symbol, v_align="center", h_align="start"),
+                    Label(
+                        name="app-label",
+                        label=title,
+                        ellipsization="end",
+                        v_align="center",
+                        h_align="center",
+                    ),
+                    Label(
+                        name="app-desc",
+                        label=subtitle,
+                        ellipsization="end",
+                        v_align="center",
+                        h_align="start",
+                        h_expand=True,
+                    ),
+                ],
+            ),
+            on_clicked=lambda *_: on_click(),
+        )    
     def __init__(self, **kwargs):
         super().__init__(
             name="app-launcher",
@@ -150,33 +181,61 @@ class AppLauncher(Box):
             return True
         return False
 
+    
+
+
+
+
+
+    
     def arrange_viewport(self, query: str = ""):
         if query.startswith("="):
-
             self.update_calculator_viewport()
             return
         if query.startswith(";"):
-            # In conversion mode, update history view once (not per keystroke)
             self.update_conversion_viewport()
             return
+
         remove_handler(self._arranger_handler) if self._arranger_handler else None
         self.viewport.children = []
         self.selected_index = -1
+
+        q = query.strip()
+
+        if query.startswith(">"):
+            cmd = query[1:].strip()
+            if cmd:
+                btn = self.bake_custom_action_slot(
+                    icon_symbol="⚡",
+                    title=f"Run command: {cmd}",
+                    subtitle="Execute command in terminal",
+                    on_click=lambda: (self.close_launcher(), exec_shell_command_async(f"kitty --hold {cmd}")),
+                )
+                self.viewport.add(btn)
+                self.update_selection(0)
+            return
+
+        if query.startswith("?"):
+            search_query = query[1:].strip()
+            if search_query:
+                btn = self.bake_custom_action_slot(
+                    icon_symbol="🔍",
+                    title=f"Search Google for '{search_query}'",
+                    subtitle="Open search results in web browser",
+                    on_click=lambda: (self.close_launcher(), self.open_web_search(search_query)),
+                )
+                self.viewport.add(btn)
+                self.update_selection(0)
+            return
 
         def extract_command_name(command_line):
             """Extract base command name from command line, removing paths and arguments"""
             if not command_line:
                 return ""
-            # Remove common shell wrappers
             if command_line.startswith("/bin/sh -c"):
-                # Handle wrapped commands like "/bin/sh -c "\$SHELL -i -c scrcpy""
                 return ""
-            # Split by spaces and take first part (the command)
             cmd = command_line.split()[0] if command_line.split() else ""
-            # Extract just the command name from full paths
-            if "/" in cmd:
-                cmd = cmd.split("/")[-1]
-            return cmd
+            return cmd.split("/")[-1] if "/" in cmd else cmd
 
         filtered_apps_iter = iter(
             sorted(
@@ -198,11 +257,30 @@ class AppLauncher(Box):
         )
         should_resize = operator.length_hint(filtered_apps_iter) == len(self._all_apps)
 
+        def handle_complete():
+            return self.handle_arrange_complete(should_resize, query)
+
         self._arranger_handler = idle_add(
-            lambda apps_iter: self.add_next_application(apps_iter) or self.handle_arrange_complete(should_resize, query),
+            lambda apps_iter: self.add_next_application(apps_iter) or handle_complete(),
             filtered_apps_iter,
             pin=True,
         )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     def handle_arrange_complete(self, should_resize, query):
         if query.strip() != "" and self.viewport.get_children():
@@ -292,17 +370,82 @@ class AppLauncher(Box):
             return False
         GLib.idle_add(scroll)
 
+    def open_web_search(self, query: str):
+        if not query or not query.strip():
+            return
+
+        text = query.strip()
+
+        if text.startswith(("http://", "https://")):
+            target = text
+        elif re.match(r"^[\w.-]+\.[a-z]{2,}(?:/.*)?$", text, re.I):
+            target = f"https://{text}"
+        else:
+            target = f"https://www.google.com/search?q={urllib.parse.quote(text)}"
+
+        webbrowser.open_new_tab(target)
+        self.close_launcher()
+
+    def _insert_special_prefix(self, entry, prefix: str) -> bool:
+        entry.set_text(f"{prefix} ")
+        entry.set_position(len(prefix) + 1)
+        return True
+
+    def handle_command_or_search(self, text: str):
+        if text.startswith("?"):
+            query = text[1:].strip()
+            if query:
+                self.open_web_search(query)
+            return True
+
+        if not text.startswith(">"):
+            return False
+
+        query = text[1:].strip()
+        if not query:
+            return False
+
+        match query:
+            case "w" | "wallpapers":
+                self.notch.open_notch("wallpapers")
+                return True
+            case "d" | "dashboard":
+                self.notch.open_notch("dashboard")
+                return True
+            case "p" | "power":
+                self.notch.open_notch("power")
+                return True
+            case "settings" | "config":
+                exec_shell_command_async(f"python {get_relative_path('../config/config.py')}")
+                self.close_launcher()
+                return True
+            case "update":
+                GLib.idle_add(lambda: run_updater(force=True))
+                self.close_launcher()
+                return True
+            case _:
+                terminal_cmd = f"kitty --hold {query}"
+                self.close_launcher()
+                exec_shell_command_async(terminal_cmd)
+                return True
+
     def on_search_entry_activate(self, text):
         if text.startswith("="):
+            if self.selected_index == -1:
+                self.evaluate_calculator_expression(text)
+            return
 
-            if self.selected_index == -1:
-                self.evaluate_calculator_expression(text)
-            return
         if text.startswith(";"):
-            # If in calculator mode and no history item is selected, evaluate new expression.
             if self.selected_index == -1:
-                self.evaluate_calculator_expression(text)
+                self.evaluate_conversion_expression(text)
             return
+
+        if text.startswith("?"):
+            query = text[1:].strip()
+            if query:
+                self.open_web_search(query)
+            return
+
         match text:
             case ":w":
                 self.notch.open_notch("wallpapers")
@@ -312,25 +455,31 @@ class AppLauncher(Box):
                 self.notch.open_notch("power")
             case ":update":
                 GLib.idle_add(lambda: run_updater(force=True))
-            case ":settings":
-                exec_shell_command_async(f"python {get_relative_path('../config/config.py')}")
-                self.close_launcher()
-            case ":config":
+            case ":settings" | ":config":
                 exec_shell_command_async(f"python {get_relative_path('../config/config.py')}")
                 self.close_launcher()
             case _:
                 children = self.viewport.get_children()
                 if children:
-
-                    if text.strip() == "" and self.selected_index == -1:
-                        return
                     selected_index = self.selected_index if self.selected_index != -1 else 0
                     if 0 <= selected_index < len(children):
                         children[selected_index].clicked()
-
     def on_search_entry_key_press(self, widget, event):
+        if event.keyval == Gdk.KEY_question:
+            return self._insert_special_prefix(widget, "?")
+        if event.keyval == Gdk.KEY_greater:
+            return self._insert_special_prefix(widget, ">")
+
         text = widget.get_text()
-        
+        if text.startswith(">") or text.startswith("?"):
+            if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+                self.handle_command_or_search(text)
+                return True
+            elif event.keyval == Gdk.KEY_Escape:
+                self.close_launcher()
+                return True
+            return False 
+                       
 
         if text.startswith("="):
             if event.keyval == Gdk.KEY_Down:
