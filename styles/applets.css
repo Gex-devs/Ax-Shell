@@ -110,6 +110,11 @@
   animation: blink 0.5s ease infinite;
 }
 
+#vmstatus-icon-label{
+  color: var(--primary);
+  font-size: 25px;
+}
+
 @keyframes blink {
   0% {
     background-color: var(--blue);

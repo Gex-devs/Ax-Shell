@@ -2,6 +2,8 @@ import os
 
 import gi
 
+from services.logitech import Logitech
+
 gi.require_version("GLib", "2.0")
 import setproctitle
 from fabric import Application
@@ -86,6 +88,13 @@ if __name__ == "__main__":
             print("Ax-Shell: No valid selected monitors found, falling back to all monitors")
             monitors = all_monitors
     
+    try:
+
+        logitech = Logitech.get_initial()
+    except Exception as e:
+        print(f"Error initializing Logitech service: {e}")
+        logitech = None
+
     # Create application components list
     app_components = []
     corners = None
@@ -95,8 +104,11 @@ if __name__ == "__main__":
     for monitor in monitors:
         monitor_id = monitor['id']
         
-        # Create corners only for the first monitor (shared across all)
-        if monitor_id == 0:
+        #TODO: Add it in config.json as an option
+        primaryMonitor_id = 2
+
+        # Create corners only for the primary monitor (shared across all)
+        if monitor_id == primaryMonitor_id:
             corners = Corners()
             # Set corners visibility based on config
             corners_visible = config.get("corners_visible", True)
@@ -118,8 +130,8 @@ if __name__ == "__main__":
         bar.notch = notch
         notch.bar = bar
         
-        # Create notification popup for the first monitor only
-        if monitor_id == 0:
+        # Create notification popup for the primary monitor only
+        if monitor_id == primaryMonitor_id:
             notification = NotificationPopup(widgets=notch.dashboard.widgets)
             app_components.append(notification)
         
@@ -129,7 +141,7 @@ if __name__ == "__main__":
                 'bar': bar,
                 'notch': notch,
                 'dock': dock,
-                'corners': corners if monitor_id == 0 else None
+                'corners': corners if monitor_id == primaryMonitor_id else None
             })
         
         # Add components to app list

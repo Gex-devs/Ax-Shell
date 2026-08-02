@@ -22,8 +22,9 @@ from modules.metrics import Battery, MetricsSmall, NetworkApplet
 from modules.systemprofiles import Systemprofiles
 from modules.systemtray import SystemTray
 from modules.weather import Weather
+from modules.windowsvm import WindowsVm
 from widgets.wayland import WaylandWindow as Window
-
+from services.logitech import Logitech
 CHINESE_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "〇"]
 
 # Tooltips
@@ -104,8 +105,8 @@ class Bar(Window):
 
         # Calculate workspace range based on monitor_id
         # Monitor 0: workspaces 1-10, Monitor 1: workspaces 11-20, etc.
-        start_workspace = self.monitor_id * 10 + 1
-        end_workspace = start_workspace + 10
+        start_workspace = self.monitor_id * 1   + 1
+        end_workspace = start_workspace + 1  
         workspace_range = range(start_workspace, end_workspace)
 
         self.workspaces = Workspaces(
@@ -183,20 +184,22 @@ class Bar(Window):
         self.connection = get_hyprland_connection()
         self.button_tools.connect("enter_notify_event", self.on_button_enter)
         self.button_tools.connect("leave_notify_event", self.on_button_leave)
-
+        
         self.systray = SystemTray()
 
         self.weather = Weather()
-        self.sysprofiles = Systemprofiles()
 
         self.network = NetworkApplet()
-
+        self.sysprofiles = Systemprofiles()
         self.lang_label = Label(name="lang-label")
         self.language = Button(
             name="language", h_align="center", v_align="center", child=self.lang_label
         )
+
         self.on_language_switch()
         self.connection.connect("event::activelayout", self.on_language_switch)
+
+        # self.windowsvm = WindowsVm()
 
         # Determine date-time format based on the new setting
         if data.DATETIME_12H_FORMAT:
@@ -276,11 +279,11 @@ class Bar(Window):
                 self.revealer_right,
             ],
         )
-
         self.rev_left = [
             self.weather,
             self.sysprofiles,
             self.network,
+            # self.windowsvm,
         ]
 
         self.revealer_left = Revealer(
@@ -325,6 +328,7 @@ class Bar(Window):
             self.control,
             self.sysprofiles,
             self.network,
+            # self.windowsvm,
             self.button_tools,
         ]
 
