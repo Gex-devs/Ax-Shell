@@ -1,0 +1,28 @@
+INFO:__main__:Started
+INFO:hidapi.udev_impl:Found device /dev/hidraw3 BID 0003 VID 0000046D PID 0000C332 HID++ True True USB 1 1
+INFO:hidapi.udev_impl:OPEN PATH /dev/hidraw3
+INFO:logitech_receiver.base:New lock 13
+INFO:hidapi.udev_impl:Report Descriptor not processed for DEVICE /dev/hidraw6 BID 0003 VID 000026CE PID 000001A2: Expecting 64 usages but got 256
+INFO:hidapi.udev_impl:Found device /dev/hidraw5 BID 0003 VID 0000046D PID 0000C336 HID++ False True USB 1 1
+INFO:hidapi.udev_impl:OPEN PATH /dev/hidraw5
+INFO:logitech_receiver.base:New lock 14
+INFO:hidapi.udev_impl:Found device /dev/hidraw0 BID 0003 VID 0000046D PID 00000AC4 HID++ False True USB 3 3
+INFO:hidapi.udev_impl:OPEN PATH /dev/hidraw0
+INFO:logitech_receiver.base:New lock 15
+INFO:logitech_receiver.listener:started with <Device(255,0AC4,G535 Gaming Headset,)> (15)
+INFO:logitech_receiver.base:New lock <_ThreadedHandle(/dev/hidraw0)>
+INFO:logitech_receiver.device:<Device(255,0AC4,G535 Gaming Headset,)> pushing device settings [<Setting([feature:4] G535 Headset:sidetone=None)>, <Setting([feature:4] G535 Headset:adc_power_management=None)>]
+INFO:__main__:Started
+INFO:hidapi.udev_impl:Found device /dev/hidraw3 BID 0003 VID 0000046D PID 0000C332 HID++ True True USB 1 1
+INFO:hidapi.udev_impl:OPEN PATH /dev/hidraw3
+INFO:logitech_receiver.base:New lock 13
+INFO:hidapi.udev_impl:Report Descriptor not processed for DEVICE /dev/hidraw6 BID 0003 VID 000026CE PID 000001A2: Expecting 64 usages but got 256
+INFO:hidapi.udev_impl:Found device /dev/hidraw5 BID 0003 VID 0000046D PID 0000C336 HID++ False True USB 1 1
+INFO:hidapi.udev_impl:OPEN PATH /dev/hidraw5
+INFO:logitech_receiver.base:New lock 14
+INFO:hidapi.udev_impl:Found device /dev/hidraw0 BID 0003 VID 0000046D PID 00000AC4 HID++ False True USB 3 3
+INFO:hidapi.udev_impl:OPEN PATH /dev/hidraw0
+INFO:logitech_receiver.base:New lock 15
+INFO:logitech_receiver.listener:started with <Device(255,0AC4,G535 Gaming Headset,)> (15)
+INFO:logitech_receiver.base:New lock <_ThreadedHandle(/dev/hidraw0)>
+INFO:logitech_receiver.device:<Device(255,0AC4,G535 Gaming Headset,)> pushing device settings [<Setting([feature:4] G535 Headset:sidetone=None)>, <Setting([feature:4] G535 Headset:adc_power_management=None)>]

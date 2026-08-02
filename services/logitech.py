@@ -74,6 +74,6 @@ class Logitech(Service):
             pass
         elif state == 0:
             exec_shell_command_async("notify-send 'Logitech Headset Disconnected' 'Disconnected!'")
-            exec_shell_command_async("pactl set-default-sink alsa_output.usb-ASUSTeK_Xonar_SoundCard-00.analog-stereo")
+            exec_shell_command_async("pactl set-default-sink alsa_output.pci-0000_0a_00.6.analog-stereo")
             pass
         pass

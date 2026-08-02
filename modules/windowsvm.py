@@ -1,3 +1,4 @@
+from sys import stdout
 from fabric.widgets.button import Button
 from gi.repository import Gdk
 from fabric.widgets.label import Label
@@ -6,6 +7,7 @@ from scripts.virt import VmMonitorService
 import config.data as data
 from fabric.widgets.box import Box
 from gi.repository import Gdk, GLib, Gtk
+from fabric.utils import exec_shell_command_async
 
 class WindowsVm(Button):
     def __init__(self, **kwargs) -> None:
@@ -30,8 +32,8 @@ class WindowsVm(Button):
     def mouse_click_event(self, widget, event):
         
         menu = Gtk.Menu()
-        menu_item = Gtk.MenuItem(label="Menu Item")
-        menu_item.connect("activate", self.menu_item_activated)
+        menu_item = Gtk.MenuItem(label="Start VM")
+        menu_item.connect("activate", self.start_session)
         menu.append(menu_item)
         menu.show_all()
 
@@ -40,10 +42,11 @@ class WindowsVm(Button):
         self.emit("clicked")
         return True
 
-    def menu_item_activated(self, widget):
-        print("Menu Item Activated")
-    
+    def start_session(self, widget):
+       print("Starting Windows VM...")
+
     def on_vm_started(service, vm_name):
+        
         print(f"VM {vm_name} started!")
 
     def on_vm_stopped(service, vm_name):

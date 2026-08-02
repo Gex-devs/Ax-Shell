@@ -1,11 +1,7 @@
 if [ "$(playerctl -p spotify status 2>/dev/null | tr -d '[:space:]')" == "Playing" ] || \
    [ "$(playerctl -p spotify status 2>/dev/null | tr -d '[:space:]')" == "Paused" ]; then
-    # Your code here
-    # Kill any existing Glava instances
-    pkill glava
-
     # Launch Glava in full-screen mode
-    glava --desktop &
+    glava --verbose --desktop &
     sleep 0.2  # Ensure Glava initializes properly
 
     # Get the Glava window ID
@@ -25,11 +21,11 @@ if [ "$(playerctl -p spotify status 2>/dev/null | tr -d '[:space:]')" == "Playin
     hyprctl dispatch fullscreen 
 
     # Lock screen with music theme
-    hyprlock --config ~/.config/hypr/hyprlock_music.conf
+    hyprlock --config ~/.config/hypr/hyprlock_music.conf -v
 
 else
     # If music is not playing, just lock normally
-    hyprlock
+    hyprlock -v
 fi
 
 sleep 0.1 

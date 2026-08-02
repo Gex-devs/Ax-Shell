@@ -181,22 +181,22 @@ class Bar(Window):
         self.connection = get_hyprland_connection()
         self.button_tools.connect("enter_notify_event", self.on_button_enter)
         self.button_tools.connect("leave_notify_event", self.on_button_leave)
-
+        
         self.systray = SystemTray()
 
         self.weather = Weather()
-        self.sysprofiles = Systemprofiles()
 
         self.network = NetworkApplet()
-
-        self.windowsvm = WindowsVm()
-
+        self.sysprofiles = Systemprofiles()
         self.lang_label = Label(name="lang-label")
         self.language = Button(
             name="language", h_align="center", v_align="center", child=self.lang_label
         )
+
         self.on_language_switch()
         self.connection.connect("event::activelayout", self.on_language_switch)
+
+        # self.windowsvm = WindowsVm()
 
         # Determine date-time format based on the new setting
         if data.DATETIME_12H_FORMAT:
@@ -276,12 +276,11 @@ class Bar(Window):
                 self.revealer_right,
             ],
         )
-
         self.rev_left = [
             self.weather,
             self.sysprofiles,
             self.network,
-            self.windowsvm,
+            # self.windowsvm,
         ]
 
         self.revealer_left = Revealer(
@@ -326,7 +325,7 @@ class Bar(Window):
             self.control,
             self.sysprofiles,
             self.network,
-            self.windowsvm,
+            # self.windowsvm,
             self.button_tools,
         ]
 
