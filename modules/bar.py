@@ -39,7 +39,10 @@ tooltip_apps = f"""<b><u>Launcher</u></b>
 <b>• Special Commands [Prefix ":"]:</b>
   :update - Open {data.APP_NAME_CAP}'s updater.
   :d - Open Dashboard.
-  :w - Open Wallpapers."""
+  :w - Open Wallpapers.
+<b>• Commands [Prefix ">"]:</b> Run a shell command or search the web.
+  e.g. ">htop", ">firefox"
+  """
 
 tooltip_power = """<b>Power Menu</b>"""
 tooltip_tools = """<b>Toolbox</b>"""

@@ -7,7 +7,11 @@ class UPowerManager():
         self.UPOWER_PATH = "/org/freedesktop/UPower"
 
         self.DBUS_PROPERTIES = "org.freedesktop.DBus.Properties"
-        self.bus = dbus.SystemBus()
+        self.bus = None
+        try:
+            self.bus = dbus.SystemBus()
+        except Exception as e:
+            print(f"Ax-Shell: UPower DBus unavailable: {e}")
 
     def detect_devices(self):
         upower_proxy = self.bus.get_object(self.UPOWER_NAME, self.UPOWER_PATH)
