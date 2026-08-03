@@ -428,7 +428,6 @@ class AppLauncher(Box):
                 terminal_cmd = f"kitty --hold {query}"
                 self.close_launcher()
                 exec_shell_command_async(terminal_cmd)
-                self.focus_app("^(kitty|alacritty|wezterm|foot)$")
                 return True
 
     def on_search_entry_activate(self, text):
