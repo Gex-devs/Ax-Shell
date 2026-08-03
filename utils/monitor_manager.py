@@ -134,7 +134,8 @@ class MonitorManager:
                     self._notch_states[i] = False
                     self._current_notch_module[i] = None
                     
-        except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError):
+        except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"[Ax-Shell] MonitorManager: hyprctl monitors failed: {type(e).__name__}: {e}")
             # Fallback to GTK only if Hyprland fails
             self._fallback_to_gtk()
         
@@ -159,6 +160,7 @@ class MonitorManager:
                 self._focused_monitor_id = monitor['id']
                 break
         
+        print(f"[Ax-Shell] MonitorManager monitors={self._monitors}")
         self.monitor_changed.emit(self._monitors)
         return self._monitors
     

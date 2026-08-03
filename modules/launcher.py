@@ -384,6 +384,7 @@ class AppLauncher(Box):
             target = f"https://www.google.com/search?q={urllib.parse.quote(text)}"
 
         webbrowser.open_new_tab(target)
+        self.focus_app("^(firefox|google-chrome|chromium|Brave-browser|zen-alpha)$")
         self.close_launcher()
 
     def _insert_special_prefix(self, entry, prefix: str) -> bool:
@@ -427,6 +428,7 @@ class AppLauncher(Box):
                 terminal_cmd = f"kitty --hold {query}"
                 self.close_launcher()
                 exec_shell_command_async(terminal_cmd)
+                self.focus_app("^(kitty|alacritty|wezterm|foot)$")
                 return True
 
     def on_search_entry_activate(self, text):
@@ -465,12 +467,13 @@ class AppLauncher(Box):
                     if 0 <= selected_index < len(children):
                         children[selected_index].clicked()
     def on_search_entry_key_press(self, widget, event):
-        if event.keyval == Gdk.KEY_question:
-            return self._insert_special_prefix(widget, "?")
-        if event.keyval == Gdk.KEY_greater:
-            return self._insert_special_prefix(widget, ">")
-
         text = widget.get_text()
+        if not text:
+            if event.keyval == Gdk.KEY_question:
+                return self._insert_special_prefix(widget, "?")
+            if event.keyval == Gdk.KEY_greater:
+                return self._insert_special_prefix(widget, ">")
+
         if text.startswith(">") or text.startswith("?"):
             if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
                 self.handle_command_or_search(text)
@@ -492,10 +495,8 @@ class AppLauncher(Box):
 
                 if self.selected_index != -1 and self.selected_index < len(self.calc_history):
                     if event.state & Gdk.ModifierType.SHIFT_MASK:
-
                         self.delete_selected_calc_history()
                     else:
-
                         selected_text = self.calc_history[self.selected_index]
                         self.copy_text_to_clipboard(selected_text)
 
@@ -934,3 +935,9 @@ class AppLauncher(Box):
             # If we still have items, select the determined index
             if len(self.conversion_history) > 0:
                 self.update_selection(min(new_index, len(self.conversion_history) - 1))
+    def focus_app(self, class_regex: str):
+        cmd = f'hyprctl dispatch \'hl.dsp.focus({{ window = "class:{class_regex}" }})\''
+        def _do_focus():
+            exec_shell_command_async(cmd)
+            return False  # Stop GLib timeout after one execution
+        GLib.timeout_add(150, _do_focus)

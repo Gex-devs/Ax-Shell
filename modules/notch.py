@@ -1547,7 +1547,7 @@ class NotchBackdrop(Window):
         bg_box = Box(
             h_expand=True,
             v_expand=True,
-            style="background-color: rgba(0, 0, 0, 0.5);",  # Semi-transparent black
+            style="background-color: rgba(0, 0, 0, 0);",  # Semi-transparent black
         )
         bg_catcher.add(bg_box)
         self.add(bg_catcher)

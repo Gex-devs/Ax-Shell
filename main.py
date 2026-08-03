@@ -114,6 +114,8 @@ if __name__ == "__main__":
             corners_visible = config.get("corners_visible", True)
             corners.set_visible(corners_visible)
             app_components.append(corners)
+
+        print(f"[Ax-Shell] main: creating components for monitor {monitor_id}")
         
         # Create monitor-specific components
         if multi_monitor_enabled:
@@ -125,6 +127,7 @@ if __name__ == "__main__":
             bar = Bar()
             notch = Notch()
             dock = Dock()
+        print(f"[Ax-Shell] main: created bar/notch/dock for monitor {monitor_id}")
         
         # Connect bar and notch
         bar.notch = notch
