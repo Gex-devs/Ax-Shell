@@ -528,13 +528,16 @@ class Notch(Window):
         self.add(inner_content)
         self.show_all()
 
-        self.backdrop = NotchBackdrop(notch_instance=self, monitor_id=monitor_id)
+        # grayed out the bottom part to test out whether multiple backdrop approach is better
+        # self.backdrop = NotchBackdrop(notch_instance=self, monitor_id=monitor_id)
+        self.backdrops = []
 
         # Connect audio signals after a short delay
         GLib.timeout_add(100, self._connect_audio_signals)
 
         self.add_keybinding("Escape", lambda *_: self.close_notch())
-        # NOTE: focus-out-event listener has been removed from here
+        # NOTE: use focus-out-event that is grayed out here incase you want to make the close when it loses focus.
+        # self.connect("focus-out-event", lambda *_: self.close_notch())
         self.add_keybinding("Ctrl Tab", lambda *_: self.dashboard.go_to_next_child())
         self.add_keybinding(
             "Ctrl Shift ISO_Left_Tab", lambda *_: self.dashboard.go_to_previous_child()
@@ -878,8 +881,7 @@ class Notch(Window):
             self.monitor_manager.set_notch_state(self.monitor_id, False)
             
         self.set_keyboard_mode("none")
-        if hasattr(self, "backdrop") and self.backdrop:
-            self.backdrop.hide()
+        self._hide_backdrops()
         self.notch_box.remove_style_class("open")
         self.stack.remove_style_class("open")
 
@@ -966,8 +968,8 @@ class Notch(Window):
         self._focused_monitor_result = None
     
     def _open_notch_internal(self, widget_name: str):
-        if hasattr(self, "backdrop") and self.backdrop:
-            self.backdrop.show_all()
+        
+        self._show_backdrops()
         self.notch_revealer.set_reveal_child(True)
         self.notch_box.add_style_class("open")
         self.stack.add_style_class("open")
@@ -1524,6 +1526,20 @@ class Notch(Window):
                 return True
 
         return False
+    def _show_backdrops(self):
+        self._hide_backdrops()
+        display = Gdk.Display.get_default()
+        n_monitors = display.get_n_monitors() if display else 1
+
+        for m_id in range(n_monitors):
+            bd = NotchBackdrop(notch_instance=self, monitor_id=m_id)
+            bd.show_all()
+            self.backdrops.append(bd)
+    def _hide_backdrops(self):
+        for bd in self.backdrops:
+            bd.destroy()
+        self.backdrops.clear()
+
 
 class NotchBackdrop(Window):
     def __init__(self, notch_instance, monitor_id: int = 0):

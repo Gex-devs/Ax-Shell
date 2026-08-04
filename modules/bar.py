@@ -22,7 +22,7 @@ from modules.metrics import Battery, MetricsSmall, NetworkApplet
 from modules.systemprofiles import Systemprofiles
 from modules.systemtray import SystemTray
 from modules.weather import Weather
-from modules.windowsvm import WindowsVm
+# from modules.windowsvm import WindowsVm
 from widgets.wayland import WaylandWindow as Window
 from services.logitech import Logitech
 CHINESE_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "〇"]
