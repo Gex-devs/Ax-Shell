@@ -2,7 +2,7 @@
 import contextlib
 
 # Third-party imports
-import gi
+import fkr
 from gi.repository import GLib  # type: ignore
 from loguru import logger
 
@@ -20,7 +20,7 @@ class PlayerctlImportError(ImportError):
 
 # Try to import Playerctl, raise custom error if not available
 try:
-    gi.require_version("Playerctl", "2.0")
+    fkr.require_version("Playerctl", "2.0")
     from gi.repository import Playerctl
 except ValueError:
     raise PlayerctlImportError

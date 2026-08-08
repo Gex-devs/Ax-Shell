@@ -397,7 +397,8 @@ class MetricsSmall(Button):
         return True
 
 class Battery(Button):
-    def __init__(self, **kwargs):
+    def __init__(self, is_main=True, **kwargs):
+        self.is_main = is_main
         super().__init__(name="metrics-small", **kwargs)
 
         main_box = Box(
@@ -485,6 +486,8 @@ class Battery(Button):
             return False
 
     def update_battery(self, sender, battery_data):
+        if not self.is_main:
+            return  # Only the main monitor should update battery status
         value, charging, time = battery_data
         if value == 0:
             self.set_visible(False)

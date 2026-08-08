@@ -1,6 +1,6 @@
-import gi
+import fkr
 
-gi.require_version("Gtk", "3.0")
+fkr.require_version("Gtk", "3.0")
 from fabric.widgets.box import Box
 from fabric.widgets.label import Label
 from fabric.widgets.stack import Stack

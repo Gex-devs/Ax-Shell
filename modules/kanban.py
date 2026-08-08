@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 
 import cairo
-import gi
+import fkr
 from fabric.widgets.box import Box
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.label import Label
@@ -12,7 +12,7 @@ from fabric.widgets.scrolledwindow import ScrolledWindow
 import config.data as data
 import modules.icons as icons
 
-gi.require_version('Gtk', '3.0')
+fkr.require_version('Gtk', '3.0')
 from gi.repository import Gdk, GLib, GObject, Gtk
 
 

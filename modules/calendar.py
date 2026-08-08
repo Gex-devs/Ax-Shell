@@ -2,13 +2,13 @@ import calendar
 import subprocess
 from datetime import datetime, timedelta
 
-import gi
+import fkr
 from fabric.widgets.centerbox import CenterBox
 from fabric.widgets.label import Label
 
 import modules.icons as icons
 
-gi.require_version("Gtk", "3.0")
+fkr.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk, Gio
 
 

@@ -2,9 +2,9 @@ import json
 import os
 import re
 
-import gi
+import fkr
 
-gi.require_version("Gtk", "3.0")
+fkr.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk
 from loguru import logger
 

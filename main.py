@@ -1,10 +1,10 @@
 import os
 
-import gi
+import fkr
 
 from services.logitech import Logitech
 
-gi.require_version("GLib", "2.0")
+fkr.require_version("GLib", "2.0")
 import setproctitle
 from fabric import Application
 from fabric.utils import exec_shell_command_async, get_relative_path

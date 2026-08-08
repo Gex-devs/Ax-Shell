@@ -1,12 +1,12 @@
 import subprocess
 import urllib.parse
 
-import gi
+import fkr
 from fabric.widgets.button import Button
 from fabric.widgets.label import Label
 from gi.repository import GLib
 
-gi.require_version("Gtk", "3.0")
+fkr.require_version("Gtk", "3.0")
 import config.data as data
 import modules.icons as icons
 

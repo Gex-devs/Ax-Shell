@@ -1,6 +1,6 @@
 import subprocess
 
-import gi
+import fkr
 from fabric.utils.helpers import exec_shell_command_async
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
@@ -9,7 +9,7 @@ from gi.repository import Gdk, GLib, Gtk
 
 import config.data as data
 
-gi.require_version('Gtk', '3.0')
+fkr.require_version('Gtk', '3.0')
 import modules.icons as icons
 from services.network import NetworkClient
 

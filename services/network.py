@@ -1,13 +1,13 @@
 from typing import Any, List, Literal
 
-import gi
+import fkr
 from fabric.core.service import Property, Service, Signal
 from fabric.utils import bulk_connect, exec_shell_command_async
 from gi.repository import Gio
 from loguru import logger
 
 try:
-    gi.require_version("NM", "1.0")
+    fkr.require_version("NM", "1.0")
     from gi.repository import NM
 except ValueError:
     logger.error("Failed to start network manager")

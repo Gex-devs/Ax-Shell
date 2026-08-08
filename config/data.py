@@ -1,9 +1,9 @@
 import json
 import os
 
-import gi
+import fkr
 
-gi.require_version("Gtk", "3.0")
+fkr.require_version("Gtk", "3.0")
 from fabric.utils.helpers import get_relative_path
 from gi.repository import Gdk, GLib
 
@@ -19,12 +19,12 @@ HOME_DIR = os.path.expanduser("~")
 CONFIG_DIR = os.path.expanduser(f"~/.config/{APP_NAME}")
 
 screen = Gdk.Screen.get_default()
-CURRENT_WIDTH = 0
-CURRENT_HEIGHT = 0
+CURRENT_X = 0
+CURRENT_Y = 0
 if screen is not None:
     try:
-        CURRENT_WIDTH = screen.get_width()
-        CURRENT_HEIGHT = screen.get_height()
+        CURRENT_X = screen.get_width()
+        CURRENT_Y = screen.get_height()
     except Exception as e:
         print(f"Ax-Shell: Unable to read screen size: {e}")
 

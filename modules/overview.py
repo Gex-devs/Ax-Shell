@@ -2,7 +2,7 @@
 import json
 
 import cairo
-import gi
+import fkr
 from fabric.hyprland.service import Hyprland
 from fabric.utils.helpers import get_desktop_applications
 from fabric.widgets.box import Box
@@ -18,7 +18,7 @@ import modules.icons as icons
 # WIP icon resolver (app_id to guessing the icon name)
 from utils.icon_resolver import IconResolver
 
-gi.require_version("Gtk", "3.0")
+fkr.require_version("Gtk", "3.0")
 from gi.repository import Gdk, Gtk
 
 screen = Gdk.Screen.get_default()
@@ -92,7 +92,7 @@ class HyprlandWindowButton(Button):
             icon_pixbuf = icon_pixbuf.scale_simple(
                 icon_size_main, 
                 icon_size_main, 
-                gi.repository.GdkPixbuf.InterpType.BILINEAR
+                fkr.repository.GdkPixbuf.InterpType.BILINEAR
             )
 
         super().__init__(
@@ -154,7 +154,7 @@ class HyprlandWindowButton(Button):
             icon_pixbuf = icon_pixbuf.scale_simple(
                 icon_size_overlay, 
                 icon_size_overlay, 
-                gi.repository.GdkPixbuf.InterpType.BILINEAR
+                fkr.repository.GdkPixbuf.InterpType.BILINEAR
             )
                 
         self.set_image(

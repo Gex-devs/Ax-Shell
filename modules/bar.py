@@ -252,7 +252,7 @@ class Bar(Window):
 
         self.control = ControlSmall()
         self.metrics = MetricsSmall()
-        self.battery = Battery()
+        self.battery = Battery(is_main=(monitor_id == 0))  # Only the main monitor will handle battery updates
 
         self.apply_component_props()
 
@@ -519,10 +519,14 @@ class Bar(Window):
             "button_power": self.button_power,
             "sysprofiles": self.sysprofiles,
         }
-
+        omitted_components = {"weather", "network", "battery", "metrics", "language", "sysprofiles","button_overview"}
         for component_name, widget in components.items():
             if component_name in self.component_visibility:
-                widget.set_visible(self.component_visibility[component_name])
+                is_visible = self.component_visibility[component_name]
+
+                if self.monitor_id != 0 and component_name in omitted_components:
+                    is_visible = False
+                widget.set_visible(is_visible)
 
     def toggle_component_visibility(self, component_name):
         components = {

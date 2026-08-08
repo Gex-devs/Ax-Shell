@@ -1,13 +1,13 @@
 import json
 from typing import Dict
 
-import gi
+import fkr
 
 import warnings
 
 from fabric.hyprland import Hyprland
 
-gi.require_version("Gdk", "3.0")
+fkr.require_version("Gdk", "3.0")
 from gi.repository import Gdk
 
 

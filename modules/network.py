@@ -1,7 +1,7 @@
-import gi
+import fkr
 
-gi.require_version('Gtk', '3.0')
-gi.require_version('NM', '1.0')
+fkr.require_version('Gtk', '3.0')
+fkr.require_version('NM', '1.0')
 from fabric.utils import bulk_connect
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button

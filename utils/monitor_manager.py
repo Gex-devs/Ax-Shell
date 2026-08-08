@@ -2,9 +2,9 @@ import json
 import subprocess
 from typing import Dict, List, Optional, Tuple
 
-import gi
+import fkr
 
-gi.require_version("Gdk", "3.0")
+fkr.require_version("Gdk", "3.0")
 from gi.repository import Gdk
 
 

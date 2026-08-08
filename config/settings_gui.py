@@ -5,9 +5,9 @@ import subprocess
 import time
 from pathlib import Path
 
-import gi
+import fkr
 
-gi.require_version("Gtk", "3.0")
+fkr.require_version("Gtk", "3.0")
 from fabric.widgets.box import Box
 from fabric.widgets.button import Button
 from fabric.widgets.entry import Entry

@@ -7,12 +7,12 @@ import sys
 import time
 from pathlib import Path
 
-import gi
+import fkr
 
 # Insertion for embedded VTE terminal
-gi.require_version("Gtk", "3.0")
-gi.require_version("Gdk", "3.0")
-gi.require_version("Vte", "2.91")
+fkr.require_version("Gtk", "3.0")
+fkr.require_version("Gdk", "3.0")
+fkr.require_version("Vte", "2.91")
 from gi.repository import Gdk, GLib, Gtk, Vte
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))

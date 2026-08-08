@@ -5,16 +5,16 @@ from enum import Enum
 from typing import Literal, cast
 
 import cairo
-import gi
+import fkr
 from fabric.core.service import Property
 from fabric.utils.helpers import extract_css_values, get_enum_member
 from fabric.widgets.window import Window
 from loguru import logger
 
-gi.require_version("Gtk", "3.0")
+fkr.require_version("Gtk", "3.0")
 
 try:
-    gi.require_version("GtkLayerShell", "0.1")
+    fkr.require_version("GtkLayerShell", "0.1")
     from gi.repository import GtkLayerShell
 except:
     raise ImportError(
