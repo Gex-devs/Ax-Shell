@@ -12,6 +12,7 @@ import subprocess
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
+from gi.repository import Gdk
 
 import config.data as data
 
@@ -169,66 +170,44 @@ class MixerSection(Box):
                 GLib.spawn_command_line_async(f"pactl set-default-source {dev.name}")
         return callback
     def app_routing_button(self, stream, devices):
-        btn = Button(label="⏷", h_align="end", tooltip_text="Route Audio")
-        popover = Gtk.Popover()
-        css_provider = Gtk.CssProvider()
-        css_provider.load_from_data(b"popover contents {background-color: black; background-image:none;}")
-        popover.get_style_context().add_provider(
-            css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
-        )
-        vbox = Box(orientation="v", spacing=4)
+        # 1. Use GTK's native MenuButton (designed exactly for this)
+        btn = Gtk.MenuButton()
+        btn.set_halign(Gtk.Align.END)
+        btn.set_tooltip_text("Route Audio")
+        
+        # Add your down-arrow label to the button
+        arrow_label = Label(label="⏷")
+        btn.add(arrow_label)
+        
+        # 2. Use a native GTK Dropdown Menu instead of a Popover
+        menu = Gtk.Menu()
+        menu.set_halign(Gtk.Align.END)
         for dev in devices:
-            item_btn = Button(
-                label=dev.description,
-                ellipsization="end",
-                max_chars_width=30,
-                h_expand=True,
-            )
-            def on_click(b, d=dev, s=stream):
-                print("\n" + "="*50)
-                print("1. ROUTING REQUEST INITIATED")
-                
-                # Use Fabric's stream name (e.g., "Spotify") to search pactl
+            # 3. Create a native MenuItem (these automatically align left and style beautifully)
+            item = Gtk.MenuItem(label=dev.description)
+            
+            def on_click(menu_item, d=dev, s=stream):
                 app_name = getattr(s, "name", getattr(s, "description", "Unknown"))
-                print(f"   -> Looking for App Name: {app_name}")
-                print(f"   -> Target Device Name: {d.name}")
-                print("-" * 50)
-
-                # 1. Query pactl for the REAL Stream ID (Sink-Input Index)
-                print("2. QUERYING PACTL FOR EXACT STREAM ID")
                 real_stream_id = None
+                
                 try:
-                    # Ask pactl for a clean JSON list of all active streams
                     cmd = ["pactl", "-f", "json", "list", "sink-inputs" if self.is_outputs else "source-outputs"]
-                    print(f"   -> Executing: {' '.join(cmd)}")
-                    
                     output = subprocess.check_output(cmd, text=True)
                     streams_json = json.loads(output)
                     
                     for stream_data in streams_json:
-                        # pactl hides the app name in the properties dictionary
                         props = stream_data.get("properties", {})
                         pactl_app_name = props.get("application.name") or props.get("media.name") or ""
-                        
-                        print(f"      - Checking pactl stream: ID {stream_data.get('index')} | App: '{pactl_app_name}'")
-                        
-                        # Match the names
                         if app_name.lower() in pactl_app_name.lower() or pactl_app_name.lower() in app_name.lower():
                             real_stream_id = stream_data.get("index")
-                            print(f"   -> [SUCCESS] Matched Fabric app name to pactl stream ID: {real_stream_id}")
                             break
                 except Exception as e:
-                    print(f"   -> [ERROR] Failed to query pactl for stream ID: {e}")
+                    print(f"Failed to query pactl for stream ID: {e}")
 
                 if real_stream_id is None:
-                    print(f"   -> [ERROR] Could not find a pactl stream ID for '{app_name}'. Aborting.")
-                    print("="*50 + "\n")
-                    popover.popdown()
+                    print(f"Could not find a pactl stream ID for '{app_name}'.")
                     return
 
-                # 2. Query pactl for the REAL Target Device ID
-                print("-" * 50)
-                print("3. QUERYING PACTL FOR EXACT TARGET DEVICE ID")
                 target_id = None
                 try:
                     pactl_cmd = ["pactl", "list", "short", "sinks" if self.is_outputs else "sources"]
@@ -238,41 +217,35 @@ class MixerSection(Box):
                         parts = line.split('\t')
                         if len(parts) >= 2 and parts[1] == d.name:
                             target_id = parts[0]
-                            print(f"   -> [SUCCESS] Matched Fabric device name to pactl ID: {target_id}")
                             break
                 except Exception as e:
-                    print(f"   -> [ERROR] Failed to query pactl for device ID: {e}")
+                    print(f"Failed to query pactl for device ID: {e}")
 
                 if target_id is None:
-                    print(f"   -> [ERROR] pactl could not find a valid device ID matching '{d.name}'. Aborting.")
-                    print("="*50 + "\n")
-                    popover.popdown()
+                    print(f"pactl could not find a valid device ID matching '{d.name}'.")
                     return
 
-                # 3. Route the audio using ONLY verified numeric IDs from pactl
-                print("-" * 50)
-                print("4. EXECUTING AUDIO ROUTE COMMAND")
                 try:
                     if self.is_outputs:
                         command = ["pactl", "move-sink-input", str(real_stream_id), str(target_id)]
                     else:
                         command = ["pactl", "move-source-output", str(real_stream_id), str(target_id)]
                     
-                    print(f"   -> Running command: {' '.join(command)}")
                     subprocess.run(command, capture_output=True, text=True, check=True)
-                    print("   -> [SUCCESS] Routing command executed without errors! Audio moved.")
                 except subprocess.CalledProcessError as e:
-                    print(f"   -> [ERROR] Failed to route audio.")
-                    print(f"   -> pactl stderr: {e.stderr}")
+                    print(f"Failed to route audio: {e.stderr}")
                 
-                print("="*50 + "\n")
-                popover.popdown()   
-            item_btn.connect("clicked", on_click)
-            vbox.add(item_btn)
-        popover.add(vbox)
-        popover.set_relative_to(btn)
-        vbox.show_all()
-        btn.connect("clicked", lambda b: popover.popup())
+                # No popdown() needed; menus auto-close on Wayland/GTK!
+
+            # Note: MenuItems use the "activate" signal, not "clicked"
+            item.connect("activate", on_click)
+            menu.append(item)
+
+        menu.show_all()
+        
+        # 4. Bind the menu to the button. GTK natively handles alignment and Wayland surfaces.
+        btn.set_popup(menu)
+        
         return btn
     
     def update_streams(self, streams):
