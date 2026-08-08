@@ -1,12 +1,14 @@
 import math
-
+import json
 import gi
 from fabric.audio.service import Audio
 from fabric.widgets.box import Box
 from fabric.widgets.label import Label
 from fabric.widgets.scale import Scale
 from fabric.widgets.scrolledwindow import ScrolledWindow
+from fabric.widgets.button import Button
 from gi.repository import GLib
+import subprocess
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
@@ -81,7 +83,7 @@ class MixerSlider(Scale):
 
 
 class MixerSection(Box):
-    def __init__(self, title, **kwargs):
+    def __init__(self, title, is_outputs, audio_service, **kwargs):
         super().__init__(
             name="mixer-section",
             orientation="v",
@@ -89,30 +91,195 @@ class MixerSection(Box):
             h_expand=True,
             v_expand=False,  # Prevent vertical stretching
         )
-
+        self.is_outputs = is_outputs
+        self.audio = audio_service
+        self.header_box = Box(
+            name="mixer-section-header",
+            orientation="h",
+            spacing=8,
+            h_expand=True,
+        )
         self.title_label = Label(
             name="mixer-section-title",
             label=title,
             h_expand=True,
-            h_align="fill",
+            h_align="start",
         )
-
+        self.stack = Gtk.Stack()
+        self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.content_box = Box(
             name="mixer-content",
             orientation="v",
             spacing=8,
             h_expand=True,
-            v_expand=False,  # Prevent vertical stretching
+            v_expand=False,
         )
+        self.stack.add_named(self.content_box, "streams")
 
-        self.add(self.title_label)
-        self.add(self.content_box)
+        self.devices_box = Box(orientation="v", spacing=4)
+        self.stack.add_named(self.devices_box, "devices")
 
+        self.is_devices_tab = False
+        self.tab_btn = Button(
+            label="Devices",
+            on_clicked=self.toggle_tab
+        )
+        self.header_box.add(self.title_label)
+        self.header_box.add(self.tab_btn)
+
+        self.add(self.header_box)
+        self.add(self.stack)
+
+    def toggle_tab(self, btn):
+        self.is_devices_tab = not self.is_devices_tab
+        if self.is_devices_tab:
+            self.stack.set_visible_child_name("devices")
+            btn.set_label("Streams")
+        else:
+            self.stack.set_visible_child_name("streams")
+            btn.set_label("Devices")
+    def update_devices(self):
+        for child in self.devices_box.get_children():
+            self.devices_box.remove(child)
+        devices = self.audio.speakers if self.is_outputs else self.audio.microphones
+        active = self.audio.speaker if self.is_outputs else self.audio.microphone
+        for dev in devices:
+            is_active = (active and dev == active)
+            text = f"🟢 {dev.description}" if is_active else f"🔴 {dev.description}"
+            btn_label = Label(
+                label=text,
+                h_align="start",
+                h_expand=True,
+                ellipsization="end",
+                max_chars_width=45
+            )
+            btn = Button(
+                child=btn_label,
+                on_clicked=self.make_set_default_callback(dev),
+                h_align="fill",
+                h_expand=True,
+            )
+            self.devices_box.add(btn)
+        self.devices_box.show_all()
+    def make_set_default_callback(self, dev):
+        def callback(btn):
+            if self.is_outputs:
+                GLib.spawn_command_line_async(f"pactl set-default-sink {dev.name}")
+            else:
+                GLib.spawn_command_line_async(f"pactl set-default-source {dev.name}")
+        return callback
+    def app_routing_button(self, stream, devices):
+        btn = Button(label="⏷", h_align="end", tooltip_text="Route Audio")
+        popover = Gtk.Popover()
+        css_provider = Gtk.CssProvider()
+        css_provider.load_from_data(b"popover contents {background-color: black; background-image:none;}")
+        popover.get_style_context().add_provider(
+            css_provider, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION
+        )
+        vbox = Box(orientation="v", spacing=4)
+        for dev in devices:
+            item_btn = Button(
+                label=dev.description,
+                ellipsization="end",
+                max_chars_width=30,
+                h_expand=True,
+            )
+            def on_click(b, d=dev, s=stream):
+                print("\n" + "="*50)
+                print("1. ROUTING REQUEST INITIATED")
+                
+                # Use Fabric's stream name (e.g., "Spotify") to search pactl
+                app_name = getattr(s, "name", getattr(s, "description", "Unknown"))
+                print(f"   -> Looking for App Name: {app_name}")
+                print(f"   -> Target Device Name: {d.name}")
+                print("-" * 50)
+
+                # 1. Query pactl for the REAL Stream ID (Sink-Input Index)
+                print("2. QUERYING PACTL FOR EXACT STREAM ID")
+                real_stream_id = None
+                try:
+                    # Ask pactl for a clean JSON list of all active streams
+                    cmd = ["pactl", "-f", "json", "list", "sink-inputs" if self.is_outputs else "source-outputs"]
+                    print(f"   -> Executing: {' '.join(cmd)}")
+                    
+                    output = subprocess.check_output(cmd, text=True)
+                    streams_json = json.loads(output)
+                    
+                    for stream_data in streams_json:
+                        # pactl hides the app name in the properties dictionary
+                        props = stream_data.get("properties", {})
+                        pactl_app_name = props.get("application.name") or props.get("media.name") or ""
+                        
+                        print(f"      - Checking pactl stream: ID {stream_data.get('index')} | App: '{pactl_app_name}'")
+                        
+                        # Match the names
+                        if app_name.lower() in pactl_app_name.lower() or pactl_app_name.lower() in app_name.lower():
+                            real_stream_id = stream_data.get("index")
+                            print(f"   -> [SUCCESS] Matched Fabric app name to pactl stream ID: {real_stream_id}")
+                            break
+                except Exception as e:
+                    print(f"   -> [ERROR] Failed to query pactl for stream ID: {e}")
+
+                if real_stream_id is None:
+                    print(f"   -> [ERROR] Could not find a pactl stream ID for '{app_name}'. Aborting.")
+                    print("="*50 + "\n")
+                    popover.popdown()
+                    return
+
+                # 2. Query pactl for the REAL Target Device ID
+                print("-" * 50)
+                print("3. QUERYING PACTL FOR EXACT TARGET DEVICE ID")
+                target_id = None
+                try:
+                    pactl_cmd = ["pactl", "list", "short", "sinks" if self.is_outputs else "sources"]
+                    output = subprocess.check_output(pactl_cmd, text=True)
+                    
+                    for line in output.strip().split('\n'):
+                        parts = line.split('\t')
+                        if len(parts) >= 2 and parts[1] == d.name:
+                            target_id = parts[0]
+                            print(f"   -> [SUCCESS] Matched Fabric device name to pactl ID: {target_id}")
+                            break
+                except Exception as e:
+                    print(f"   -> [ERROR] Failed to query pactl for device ID: {e}")
+
+                if target_id is None:
+                    print(f"   -> [ERROR] pactl could not find a valid device ID matching '{d.name}'. Aborting.")
+                    print("="*50 + "\n")
+                    popover.popdown()
+                    return
+
+                # 3. Route the audio using ONLY verified numeric IDs from pactl
+                print("-" * 50)
+                print("4. EXECUTING AUDIO ROUTE COMMAND")
+                try:
+                    if self.is_outputs:
+                        command = ["pactl", "move-sink-input", str(real_stream_id), str(target_id)]
+                    else:
+                        command = ["pactl", "move-source-output", str(real_stream_id), str(target_id)]
+                    
+                    print(f"   -> Running command: {' '.join(command)}")
+                    subprocess.run(command, capture_output=True, text=True, check=True)
+                    print("   -> [SUCCESS] Routing command executed without errors! Audio moved.")
+                except subprocess.CalledProcessError as e:
+                    print(f"   -> [ERROR] Failed to route audio.")
+                    print(f"   -> pactl stderr: {e.stderr}")
+                
+                print("="*50 + "\n")
+                popover.popdown()   
+            item_btn.connect("clicked", on_click)
+            vbox.add(item_btn)
+        popover.add(vbox)
+        popover.set_relative_to(btn)
+        vbox.show_all()
+        btn.connect("clicked", lambda b: popover.popup())
+        return btn
+    
     def update_streams(self, streams):
         for child in self.content_box.get_children():
             self.content_box.remove(child)
-
         for stream in streams:
+            is_app = hasattr(stream, "type") and "application" in stream.type.lower()
             label_text = stream.description
             if hasattr(stream, "type") and "application" in stream.type.lower():
                 label_text = getattr(stream, "name", stream.description)
@@ -123,7 +290,7 @@ class MixerSection(Box):
                 h_expand=True,
                 v_expand=False,  # Prevent vertical stretching
             )
-
+            header_box = Box(orientation="h", spacing=4, h_expand=True)
             label = Label(
                 name="mixer-stream-label",
                 label=f"[{math.ceil(stream.volume)}%] {stream.description}",
@@ -134,14 +301,19 @@ class MixerSection(Box):
                 max_chars_width=45,
                 height_request=20,  # Fixed height for labels
             )
-
+            header_box.add(label)
+            if is_app:
+                devices = self.audio.speakers if self.is_outputs else self.audio.microphones
+                routing_btn = self.app_routing_button(stream, devices)
+                header_box.add(routing_btn)
             slider = MixerSlider(stream)
 
-            stream_container.add(label)
+            stream_container.add(header_box)
             stream_container.add(slider)
             self.content_box.add(stream_container)
 
         self.content_box.show_all()
+        self.update_devices()
 
 
 class Mixer(Box):
@@ -183,11 +355,11 @@ class Mixer(Box):
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,  # Vertical scrollbar when needed
             hscrollbar_policy=Gtk.PolicyType.NEVER,      # Disable horizontal scrollbar
         )
-        self.outputs_section = MixerSection("Outputs")
+        self.outputs_section = MixerSection("Outputs", True, self.audio)
         self.outputs_scrolled.add(self.outputs_section)
         self.outputs_scrolled.set_size_request(-1, 150)  # Fixed height of 150px
         self.outputs_scrolled.set_max_content_height(150)  # Enforce max height
-
+        
         # ScrolledWindow for Inputs
         self.inputs_scrolled = ScrolledWindow(
             name="inputs-scrolled",
@@ -196,7 +368,7 @@ class Mixer(Box):
             vscrollbar_policy=Gtk.PolicyType.AUTOMATIC,  # Vertical scrollbar when needed
             hscrollbar_policy=Gtk.PolicyType.NEVER,      # Disable horizontal scrollbar
         )
-        self.inputs_section = MixerSection("Inputs")
+        self.inputs_section = MixerSection("Inputs", False, self.audio)
         self.inputs_scrolled.add(self.inputs_section)
         self.inputs_scrolled.set_size_request(-1, 150)  # Fixed height of 150px
         self.inputs_scrolled.set_max_content_height(150)  # Enforce max height
