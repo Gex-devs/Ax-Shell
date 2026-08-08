@@ -1,6 +1,5 @@
 import random
-
-import fkr
+import gi
 from fabric.utils import get_relative_path
 from fabric.widgets.box import Box
 from fabric.widgets.image import Image
@@ -9,8 +8,8 @@ from fabric.widgets.stack import Stack
 
 import config.data as data
 
-fkr.require_version("Gtk", "3.0")
-fkr.require_version("GdkPixbuf", "2.0")
+gi.require_version("Gtk", "3.0")
+gi.require_version("GdkPixbuf", "2.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
 import modules.icons as icons

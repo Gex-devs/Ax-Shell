@@ -1,6 +1,6 @@
-import fkr
+import gi
 
-fkr.require_version("Gray", "0.1")
+gi.require_version("Gray", "0.1")
 import logging
 import os
 

@@ -2,13 +2,13 @@ from collections.abc import Iterable
 from enum import Enum
 from typing import Literal, cast, overload
 
-import fkr
+import gi
 import OpenGL.GL as GL
 from fabric import Property, Signal
 from fabric.widgets.widget import Widget
 from OpenGL.GL.shaders import compileProgram, compileShader
 
-fkr.require_version("Gtk", "3.0")
+gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, GLib, Gtk
 
 

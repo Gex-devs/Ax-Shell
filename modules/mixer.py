@@ -1,6 +1,6 @@
 import math
-
-import fkr
+import json
+import gi
 from fabric.audio.service import Audio
 from fabric.widgets.box import Box
 from fabric.widgets.label import Label
@@ -10,7 +10,7 @@ from fabric.widgets.button import Button
 from gi.repository import GLib
 import subprocess
 
-fkr.require_version("Gtk", "3.0")
+gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
 import config.data as data
@@ -185,47 +185,88 @@ class MixerSection(Box):
                 h_expand=True,
             )
             def on_click(b, d=dev, s=stream):
-                # 1. Safely get the stream ID
-                stream_id = getattr(s, "index", getattr(s, "id", None))
-                if stream_id is None:
-                    print("Error: Could not determine the application stream ID.")
+                print("\n" + "="*50)
+                print("1. ROUTING REQUEST INITIATED")
+                
+                # Use Fabric's stream name (e.g., "Spotify") to search pactl
+                app_name = getattr(s, "name", getattr(s, "description", "Unknown"))
+                print(f"   -> Looking for App Name: {app_name}")
+                print(f"   -> Target Device Name: {d.name}")
+                print("-" * 50)
+
+                # 1. Query pactl for the REAL Stream ID (Sink-Input Index)
+                print("2. QUERYING PACTL FOR EXACT STREAM ID")
+                real_stream_id = None
+                try:
+                    # Ask pactl for a clean JSON list of all active streams
+                    cmd = ["pactl", "-f", "json", "list", "sink-inputs" if self.is_outputs else "source-outputs"]
+                    print(f"   -> Executing: {' '.join(cmd)}")
+                    
+                    output = subprocess.check_output(cmd, text=True)
+                    streams_json = json.loads(output)
+                    
+                    for stream_data in streams_json:
+                        # pactl hides the app name in the properties dictionary
+                        props = stream_data.get("properties", {})
+                        pactl_app_name = props.get("application.name") or props.get("media.name") or ""
+                        
+                        print(f"      - Checking pactl stream: ID {stream_data.get('index')} | App: '{pactl_app_name}'")
+                        
+                        # Match the names
+                        if app_name.lower() in pactl_app_name.lower() or pactl_app_name.lower() in app_name.lower():
+                            real_stream_id = stream_data.get("index")
+                            print(f"   -> [SUCCESS] Matched Fabric app name to pactl stream ID: {real_stream_id}")
+                            break
+                except Exception as e:
+                    print(f"   -> [ERROR] Failed to query pactl for stream ID: {e}")
+
+                if real_stream_id is None:
+                    print(f"   -> [ERROR] Could not find a pactl stream ID for '{app_name}'. Aborting.")
+                    print("="*50 + "\n")
                     popover.popdown()
                     return
 
-                # 2. Foolproof method: Ask pactl directly for the target device's exact numeric ID
+                # 2. Query pactl for the REAL Target Device ID
+                print("-" * 50)
+                print("3. QUERYING PACTL FOR EXACT TARGET DEVICE ID")
                 target_id = None
                 try:
-                    # Query either sinks (outputs) or sources (inputs)
                     pactl_cmd = ["pactl", "list", "short", "sinks" if self.is_outputs else "sources"]
                     output = subprocess.check_output(pactl_cmd, text=True)
                     
                     for line in output.strip().split('\n'):
                         parts = line.split('\t')
-                        # parts[0] is the numeric ID, parts[1] is the exact string name
                         if len(parts) >= 2 and parts[1] == d.name:
                             target_id = parts[0]
+                            print(f"   -> [SUCCESS] Matched Fabric device name to pactl ID: {target_id}")
                             break
                 except Exception as e:
-                    print(f"Failed to query pactl for device ID: {e}")
+                    print(f"   -> [ERROR] Failed to query pactl for device ID: {e}")
 
-                # If we still can't find it, we know the device name fabric sees doesn't match pactl
                 if target_id is None:
-                    print(f"Error: pactl could not find a valid device ID matching the name '{d.name}'.")
+                    print(f"   -> [ERROR] pactl could not find a valid device ID matching '{d.name}'. Aborting.")
+                    print("="*50 + "\n")
                     popover.popdown()
                     return
 
                 # 3. Route the audio using ONLY verified numeric IDs from pactl
+                print("-" * 50)
+                print("4. EXECUTING AUDIO ROUTE COMMAND")
                 try:
                     if self.is_outputs:
-                        command = ["pactl", "move-sink-input", str(stream_id), str(target_id)]
+                        command = ["pactl", "move-sink-input", str(real_stream_id), str(target_id)]
                     else:
-                        command = ["pactl", "move-source-output", str(stream_id), str(target_id)]
+                        command = ["pactl", "move-source-output", str(real_stream_id), str(target_id)]
                     
+                    print(f"   -> Running command: {' '.join(command)}")
                     subprocess.run(command, capture_output=True, text=True, check=True)
+                    print("   -> [SUCCESS] Routing command executed without errors! Audio moved.")
                 except subprocess.CalledProcessError as e:
-                    print(f"Failed to route audio. Error: {e.stderr}")
+                    print(f"   -> [ERROR] Failed to route audio.")
+                    print(f"   -> pactl stderr: {e.stderr}")
                 
-                popover.popdown()
+                print("="*50 + "\n")
+                popover.popdown()   
             item_btn.connect("clicked", on_click)
             vbox.add(item_btn)
         popover.add(vbox)

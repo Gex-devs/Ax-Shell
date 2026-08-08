@@ -2,11 +2,11 @@ import math
 from typing import Literal
 
 import cairo
-import fkr
+import gi
 from fabric.core.service import Property
 from fabric.widgets.widget import Widget
 
-fkr.require_version("Gtk", "3.0")
+gi.require_version("Gtk", "3.0")
 from gi.repository import Gdk, GdkPixbuf, Gtk  # noqa: E402
 
 

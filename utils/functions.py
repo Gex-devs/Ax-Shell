@@ -4,7 +4,7 @@ import shutil
 import subprocess
 from typing import Dict, List, Literal
 
-import fkr
+import gi
 import psutil
 from fabric.utils import exec_shell_command, exec_shell_command_async, get_relative_path
 from gi.repository import Gdk, GLib, Gtk
@@ -13,7 +13,7 @@ from loguru import logger
 from .colors import Colors
 from .icons import distro_text_icons
 
-fkr.require_version("Gtk", "3.0")
+gi.require_version("Gtk", "3.0")
 
 
 class ExecutableNotFoundError(ImportError):

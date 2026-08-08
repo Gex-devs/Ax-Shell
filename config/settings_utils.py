@@ -5,10 +5,10 @@ import subprocess
 import time
 from pathlib import Path
 
-import fkr
+import gi
 import toml
 
-fkr.require_version("Gtk", "3.0")
+gi.require_version("Gtk", "3.0")
 from fabric.utils.helpers import exec_shell_command_async
 from gi.repository import GLib
 

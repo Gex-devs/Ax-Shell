@@ -1,8 +1,8 @@
-import fkr
+import gi
 
 import config.data as data
 
-fkr.require_version('Gtk', '3.0')
+gi.require_version('Gtk', '3.0')
 import json
 import os
 import re
