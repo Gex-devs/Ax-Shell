@@ -302,7 +302,7 @@ class WallpaperSelector(Box):
                 print(f"Warning: matugen failed for wallpaper {full_path}: {exc}")
 
         # Also try awww if present, but do not depend on it.
-        if os.path.exists("/tmp/hypr"):
+        if os.getenv("HYPRLAND_INSTANCE_SIGNATURE"):
             try:
                 subprocess.run(
                     [
