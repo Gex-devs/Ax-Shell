@@ -28,7 +28,7 @@ vertical_mode = (
 
 
 class MixerSlider(Scale):
-    def __init__(self, stream, **kwargs):
+    def __init__(self, stream, bind_label=None, label_text="", **kwargs):
         super().__init__(
             name="control-slider",
             orientation="h",
@@ -39,7 +39,10 @@ class MixerSlider(Scale):
             style_classes=["no-icon"],
             **kwargs,
         )
-
+        self.bind_label = bind_label
+        self.label_text = label_text
+        self.add_events(Gdk.EventMask.SCROLL_MASK)
+        self.connect("scroll-event", self.on_scroll)
         self.stream = stream
         self._updating_from_stream = False
         self.set_value(stream.volume / 100)
@@ -47,6 +50,7 @@ class MixerSlider(Scale):
 
         self.connect("value-changed", self.on_value_changed)
         stream.connect("changed", self.on_stream_changed)
+        
 
         # Apply appropriate style class based on stream type
         if hasattr(stream, "type"):
@@ -61,18 +65,37 @@ class MixerSlider(Scale):
         # Set initial tooltip and muted state
         self.set_tooltip_text(f"{stream.volume:.0f}%")
         self.update_muted_state()
+    def on_scroll(self, widget, event):
+        if event.direction == Gdk.ScrollDirection.SMOOTH:
+            _, _, dy = event.get_scroll_deltas()
+            step = -0.02 if dy > 0 else 0.02
+        else:
+            step = 0.02 if event.direction == Gdk.ScrollDirection.UP else -0.02
+
+        self.set_value(max(0.0, min(1.0, self.get_value() + step)))
+        return True
 
     def on_value_changed(self, _):
         if self._updating_from_stream:
             return
         if self.stream:
             self.stream.volume = self.value * 100
-            self.set_tooltip_text(f"{self.value * 100:.0f}%")
+            display_vol = int(self.value * 100)
+            vol_str = f"{display_vol}"
+            self.set_tooltip_text(vol_str)
+
+            if self.bind_label:
+                self.bind_label.set_label(f"[{vol_str}] {self.label_text}")
 
     def on_stream_changed(self, stream):
         self._updating_from_stream = True
         self.value = stream.volume / 100
-        self.set_tooltip_text(f"{stream.volume:.0f}%")
+        display_vol = int(stream.volume)
+        vol_str = f"{display_vol}"
+        
+        self.set_tooltip_text(vol_str)
+        if self.bind_label:
+            self.bind_label.set_label(f"[{vol_str}] {self.label_text}")
         self.update_muted_state()
         self._updating_from_stream = False
 
@@ -249,6 +272,15 @@ class MixerSection(Box):
         return btn
     
     def update_streams(self, streams):
+        # 1. Generate a list of unique names for the current streams
+        current_stream_ids = [getattr(s, "name", s.description) for s in streams]
+        
+        # 2. If the apps/streams haven't changed, skip rebuilding the UI
+        if getattr(self, "_active_stream_ids", None) == current_stream_ids:
+            self.update_devices() # Ensure active device indicators still update
+            return
+            
+        self._active_stream_ids = current_stream_ids
         for child in self.content_box.get_children():
             self.content_box.remove(child)
         for stream in streams:
@@ -266,7 +298,7 @@ class MixerSection(Box):
             header_box = Box(orientation="h", spacing=4, h_expand=True)
             label = Label(
                 name="mixer-stream-label",
-                label=f"[{math.ceil(stream.volume)}%] {stream.description}",
+                label=f"[{math.ceil(stream.volume)}%] {label_text}",
                 h_expand=True,
                 h_align="start",
                 v_align="center",
@@ -279,7 +311,7 @@ class MixerSection(Box):
                 devices = self.audio.speakers if self.is_outputs else self.audio.microphones
                 routing_btn = self.app_routing_button(stream, devices)
                 header_box.add(routing_btn)
-            slider = MixerSlider(stream)
+            slider = MixerSlider(stream, bind_label=label, label_text=label_text)
 
             stream_container.add(header_box)
             stream_container.add(slider)
