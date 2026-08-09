@@ -990,7 +990,7 @@ class Notch(Window):
                     self.present()
                     self.grab_focus()
                     return False
-                GLib.timeout_add(50, force_focus)
+                GLib.timeout_add(25, force_focus)
                 self.dashboard.go_to_section("widgets")
                 self.applet_stack.set_visible_child(self.nwconnections)
                 return
@@ -1009,7 +1009,7 @@ class Notch(Window):
                     self.present()
                     self.grab_focus()
                     return False
-                GLib.timeout_add(50, force_focus)
+                GLib.timeout_add(25, force_focus)
                 self.dashboard.go_to_section("widgets")
                 self.applet_stack.set_visible_child(self.btdevices)
                 return
@@ -1028,7 +1028,7 @@ class Notch(Window):
                     self.present()
                     self.grab_focus()
                     return False
-                GLib.timeout_add(50, force_focus)
+                GLib.timeout_add(25, force_focus)
                 self.dashboard.go_to_section("widgets")
                 self.applet_stack.set_visible_child(self.nhistory)
                 return
@@ -1106,7 +1106,7 @@ class Notch(Window):
             if focus_action:
                 focus_action()
             self.set_keyboard_mode("on-demand")
-        GLib.timeout_add(50, force_focus_main)
+        GLib.timeout_add(25, force_focus_main)
 
         if action_on_open:
             action_on_open()
