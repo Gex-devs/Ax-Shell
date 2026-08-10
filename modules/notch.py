@@ -968,6 +968,13 @@ class Notch(Window):
         self._focused_monitor_result = None
     
     def _open_notch_internal(self, widget_name: str):
+        def force_focus_main():
+            if focus_action:
+                focus_action()
+            else:
+                self.grab_focus()
+            self.set_keyboard_mode("on-demand")
+            return False
         
         self._show_backdrops()
         self.notch_revealer.set_reveal_child(True)
@@ -984,13 +991,7 @@ class Notch(Window):
                 ):
                     self.close_notch()
                     return
-
-                self.set_keyboard_mode("on-demand")
-                def force_focus():
-                    self.present()
-                    self.grab_focus()
-                    return False
-                GLib.timeout_add(25, force_focus)
+                GLib.idle_add(lambda: (GLib.timeout_add(10, force_focus_main), False)[1])
                 self.dashboard.go_to_section("widgets")
                 self.applet_stack.set_visible_child(self.nwconnections)
                 return
@@ -1003,13 +1004,7 @@ class Notch(Window):
                 ):
                     self.close_notch()
                     return
-
-                self.set_keyboard_mode("on-demand")
-                def force_focus():
-                    self.present()
-                    self.grab_focus()
-                    return False
-                GLib.timeout_add(25, force_focus)
+                GLib.idle_add(lambda: (GLib.timeout_add(10, force_focus_main), False)[1])
                 self.dashboard.go_to_section("widgets")
                 self.applet_stack.set_visible_child(self.btdevices)
                 return
@@ -1024,11 +1019,7 @@ class Notch(Window):
                     return
 
                 self.set_keyboard_mode("on-demand")
-                def force_focus():
-                    self.present()
-                    self.grab_focus()
-                    return False
-                GLib.timeout_add(25, force_focus)
+                GLib.idle_add(lambda: (GLib.timeout_add(10, force_focus_main), False)[1])
                 self.dashboard.go_to_section("widgets")
                 self.applet_stack.set_visible_child(self.nhistory)
                 return
@@ -1102,16 +1093,7 @@ class Notch(Window):
 
         if action_on_open:
             action_on_open()
-        def force_focus_main():
-            if focus_action:
-                focus_action()
-            self.set_keyboard_mode("on-demand")
-        GLib.timeout_add(25, force_focus_main)
-
-        if action_on_open:
-            action_on_open()
-        if focus_action:
-            GLib.timeout_add(50, lambda:(focus_action(), False)[1])
+        GLib.idle_add(lambda: (GLib.timeout_add(10, force_focus_main), False)[1])
 
         if target_widget_on_stack == self.dashboard:
             if widget_name == "bluetooth":
