@@ -519,10 +519,14 @@ class Bar(Window):
             "button_power": self.button_power,
             "sysprofiles": self.sysprofiles,
         }
-
+        secondary_exclusions = {"weather", "battery", "systray", "metrics", "sysprofiles"}
         for component_name, widget in components.items():
             if component_name in self.component_visibility:
-                widget.set_visible(self.component_visibility[component_name])
+                is_visible = self.component_visibility[component_name]
+                
+                if self.monitor_id != 0 and component_name in secondary_exclusions:
+                    is_visible = False
+                widget.set_visible(is_visible)
 
     def toggle_component_visibility(self, component_name):
         components = {
