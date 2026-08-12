@@ -5,6 +5,7 @@ import os
 import random  # <--- AÑADIDO
 import shutil
 import subprocess
+import json
 from concurrent.futures import ThreadPoolExecutor
 
 from fabric.utils.helpers import exec_shell_command_async
@@ -27,6 +28,17 @@ class WallpaperSelector(Box):
     def __init__(self, **kwargs):
         # Delete the old cache directory if it exists
         old_cache_dir = f"{data.CACHE_DIR}/wallpapers"
+        # Per screen wallpaper
+        self.monitor_dropdown = Gtk.ComboBoxText()
+        self.monitor_dropdown.set_name("monitor-dropdown")
+        self.monitor_dropdown.append("all", "All Monitors")
+        try:
+            mons = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+            for m in mons:
+                self.monitor_dropdown.append(m["name"], m["name"])
+        except Exception:
+            pass
+        self.monitor_dropdown.set_active_id("all")
         if os.path.exists(old_cache_dir):
             shutil.rmtree(old_cache_dir)
 
@@ -147,6 +159,7 @@ class WallpaperSelector(Box):
                 self.search_entry,
                 self.scheme_dropdown,
                 self.matugen_switcher,
+                self.monitor_dropdown,
             ],
         )
 
@@ -206,6 +219,8 @@ class WallpaperSelector(Box):
         self.randomize_dice_icon()
         # Ensure the search entry gets focus when starting
         self.search_entry.grab_focus()
+        
+        
 
     def _load_wallpapers_async(self):
         """Non-blocking wallpaper processing."""
@@ -302,31 +317,20 @@ class WallpaperSelector(Box):
                 print(f"Warning: matugen failed for wallpaper {full_path}: {exc}")
 
         # Also try awww if present, but do not depend on it.
+        target_mon = getattr(self, "monitor_dropdown", None)
+        selected_output = target_mon.get_active_id() if target_mon else "all"
         if os.getenv("HYPRLAND_INSTANCE_SIGNATURE"):
+            awww_cmd = [
+                "awww", "img", full_path, "-t","outer",
+                "--transition-duration","1.5","--transition-step","255",
+                "--transition-fps", "60", "-f","Nearest"
+            ]
+            if selected_output and selected_output != "all":
+                awww_cmd.extend(["-o",selected_output])
             try:
-                subprocess.run(
-                    [
-                        "awww",
-                        "img",
-                        full_path,
-                        "-t",
-                        "outer",
-                        "--transition-duration",
-                        "1.5",
-                        "--transition-step",
-                        "255",
-                        "--transition-fps",
-                        "60",
-                        "-f",
-                        "Nearest",
-                    ],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=20,
-                )
-            except Exception as exc:
-                print(f"Warning: awww failed for wallpaper {full_path}: {exc}")
+                subprocess.run(awww_cmd, check=True, capture_output=True, text=True, timeout=20)
+            except Exception as e:
+                print(f"Warning: awww failed for wallpaper {full_path}: {e}")
 
     def set_random_wallpaper(self, widget, external=False):
         if not self.files:
