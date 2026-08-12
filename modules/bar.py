@@ -519,7 +519,7 @@ class Bar(Window):
             "button_power": self.button_power,
             "sysprofiles": self.sysprofiles,
         }
-        secondary_exclusions = {"weather", "battery", "systray", "metrics", "sysprofiles"}
+        secondary_exclusions = {"weather", "battery", "systray", "metrics", "sysprofiles", "language", "button_overview"}
         for component_name, widget in components.items():
             if component_name in self.component_visibility:
                 is_visible = self.component_visibility[component_name]
