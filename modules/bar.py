@@ -22,8 +22,9 @@ from modules.metrics import Battery, MetricsSmall, NetworkApplet
 from modules.systemprofiles import Systemprofiles
 from modules.systemtray import SystemTray
 from modules.weather import Weather
-# from modules.windowsvm import WindowsVm
+from modules.windowsvm import WindowsVm
 from widgets.wayland import WaylandWindow as Window
+from modules.windowsvm import WindowsVm
 from services.logitech import Logitech
 CHINESE_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "〇"]
 
@@ -199,7 +200,7 @@ class Bar(Window):
         self.on_language_switch()
         self.connection.connect("event::activelayout", self.on_language_switch)
 
-        # self.windowsvm = WindowsVm()
+        self.windowsvm = WindowsVm()
 
         # Determine date-time format based on the new setting
         if data.DATETIME_12H_FORMAT:
@@ -282,8 +283,8 @@ class Bar(Window):
         self.rev_left = [
             self.weather,
             self.sysprofiles,
+            self.windowsvm,
             self.network,
-            # self.windowsvm,
         ]
 
         self.revealer_left = Revealer(
@@ -328,7 +329,7 @@ class Bar(Window):
             self.control,
             self.sysprofiles,
             self.network,
-            # self.windowsvm,
+            self.windowsvm,
             self.button_tools,
         ]
 
