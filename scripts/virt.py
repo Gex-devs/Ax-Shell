@@ -47,7 +47,8 @@ if __name__ == "__main__":
     # Required before opening libvirt connection for events
     libvirt.virEventRegisterDefaultImpl()
 
-    vm_name = sys.argv[1] if len(sys.argv) > 1 else "win11"
+    # vm_name = sys.argv[1] if len(sys.argv) > 1 else "win11"
+    vm_name = "workstation"
     print(f"Monitoring VM: '{vm_name}'... (Press Ctrl+C to stop)")
 
     service = VmMonitorService(vm_name)
