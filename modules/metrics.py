@@ -285,7 +285,6 @@ class MetricsSmall(Button):
         super().__init__(name="metrics-small", **kwargs)
 
         main_box = Box(
-
             spacing=0,
             orientation="h" if not data.VERTICAL else "v",
             visible=True,

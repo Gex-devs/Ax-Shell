@@ -1,0 +1,24 @@
+#vm-menu-item{
+    margin: 0px 4px;
+    color: #fff;
+}
+#vm-box{
+    background-color: #000000;
+    border-radius: 40px;
+    padding: 4px;
+}
+.vm-radio-item {
+    padding: 0px 10px;
+}
+
+.vm-radio-item:checked {
+    background-color: #add8e6;
+    transition: all 150ms ease-in-out;
+}
+.vm-radio-item:checked label{
+    color: #000000;
+}
+#vmstatus-icon-label{
+    padding: 0 4px;
+}
+
