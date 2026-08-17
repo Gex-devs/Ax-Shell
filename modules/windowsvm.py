@@ -14,12 +14,14 @@ from scripts.virt import VmMonitorService
 from pathlib import Path
 
 libvirt.virEventRegisterDefaultImpl()
-conn = libvirt.open('qemu:///system')
 
 class WindowsVm(EventBox):
     def __init__(self, **kwargs) -> None:
-        available_vms = [domain.name() for domain in conn.listAllDomains(0)]
-        conn.close()
+        conn = libvirt.open('qemu:///system')
+        try:
+            available_vms = [domain.name() for domain in conn.listAllDomains(0)]
+        finally:
+            conn.close()
         super().__init__(name="vm-indicator", **kwargs)
         
         # Default to first available VM or empty string
