@@ -23,6 +23,17 @@ class GotoFree(Button):
             on_clicked=self.on_button_click,
             **kwargs
         )
+    def is_lua(self) -> bool:
+        try:
+            reply = self.connection.send_command("j/version").reply
+            version_data = json.loads(reply.decode("utf-8"))
+            v_str = version_data.get("version", "v0.0.0").lstrip("v").split("-")[0]
+            parts = v_str.split(".")
+            minor_version = int(parts[1]) if len(parts) > 1 else 0
+            print(f"[BULSHITTING]{minor_version}")
+            return minor_version>=54
+        except Exception:
+            return False
     def get_free_id(self) -> int:
         reply = self.connection.send_command("j/workspaces").reply
         self.workspaces = json.loads(reply.decode("utf-8"))
@@ -30,6 +41,11 @@ class GotoFree(Button):
         return next(i for i in range(1,100) if i not in active_ids)
     def on_button_click(self):
         free_id = self.get_free_id()
-        exec_shell_command_async(f'hyprctl dispatch "hl.dsp.focus({{workspace = {free_id}}})"')
+        
+        if self.is_lua():
+            exec_shell_command_async(f'hyprctl dispatch "hl.dsp.focus({{workspace = {free_id}}})"')
+        else:
+            exec_shell_command_async(f"hyprctl dispatch workspace {free_id}")
+            
         
         
