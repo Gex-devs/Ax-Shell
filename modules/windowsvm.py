@@ -7,11 +7,10 @@ from fabric.widgets.eventbox import EventBox
 from fabric.widgets.label import Label
 from fabric.widgets.box import Box
 from fabric.widgets.revealer import Revealer
-from fabric.widgets.image import Image
 from fabric.utils import exec_shell_command_async
 from gi.repository import Gdk, GLib, Gtk
 from scripts.virt import VmMonitorService
-from pathlib import Path
+
 
 libvirt.virEventRegisterDefaultImpl()
 
@@ -38,9 +37,10 @@ class WindowsVm(EventBox):
         self.icon_btn = Button(
             name="vmstatus-icon-btn", 
             child=self.icon,
-            on_clicked=self._toggle_menu
         )
 
+        self.icon_btn.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.icon_btn.connect("button-press-event", lambda widget, event: self._toggle_menu(event))
         self.vm_service = VmMonitorService(self.vm_name)
         self.vm_service.connect("vm-started", self.on_vm_started)
         self.vm_service.connect("vm-stopped", self.on_vm_stopped)
@@ -96,8 +96,6 @@ class WindowsVm(EventBox):
             children=[self.details_revealer_left, self.icon_btn, self.details_revealer_right],
         )
         self.add(self.inner_box)
-
-        self.connect("button-press-event", self._toggle_menu)
         
         self.show_all()
 
@@ -121,15 +119,21 @@ class WindowsVm(EventBox):
         self.vm_name = vm_name
         self.update_icon_status()
 
-    def _toggle_menu(self, *args):
+    def _toggle_menu(self,event):
         """Toggles the revealers open or closed when the widget is clicked."""
-        current_state = self.details_revealer_right.get_reveal_child()
-        new_state = not current_state
-        
-        self.details_revealer_right.set_reveal_child(new_state)
-        self.details_revealer_left.set_reveal_child(new_state)
-        
-        logger.info(f"[WindowsVm] Menu clicked, state is now: {'revealed' if new_state else 'hidden'}")
+        if event.type == Gdk.EventType._2BUTTON_PRESS: 
+            if event.button == 1:
+                exec_shell_command_async("kitty")
+                return True
+         
+        elif event.button == 3:
+                current_state = self.details_revealer_right.get_reveal_child()
+                new_state = not current_state
+                
+                self.details_revealer_right.set_reveal_child(new_state)
+                self.details_revealer_left.set_reveal_child(new_state)
+                logger.info(f"[WindowsVm] Menu clicked, state is now: {'revealed' if new_state else 'hidden'}")
+                return True
         return False
 
     def _on_start_clicked(self, _):

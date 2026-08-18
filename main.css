@@ -23,6 +23,7 @@
 @import url("./styles/systemprofiles.css");
 @import url("./styles/workspaces.css");
 @import url("./styles/vm.css");
+@import url("./styles/gotobtn.css");
 
 * {
   all: unset;

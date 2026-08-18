@@ -26,6 +26,7 @@ from modules.windowsvm import WindowsVm
 from widgets.wayland import WaylandWindow as Window
 from modules.windowsvm import WindowsVm
 from services.logitech import Logitech
+from modules.goto_free import GotoFree
 CHINESE_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "〇"]
 
 # Tooltips
@@ -189,7 +190,7 @@ class Bar(Window):
         self.systray = SystemTray()
 
         self.weather = Weather()
-
+        self.goto_free = GotoFree()
         self.network = NetworkApplet()
         self.sysprofiles = Systemprofiles()
         self.lang_label = Label(name="lang-label")
@@ -285,6 +286,7 @@ class Bar(Window):
             self.sysprofiles,
             self.windowsvm,
             self.network,
+            self.goto_free
         ]
 
         self.revealer_left = Revealer(
@@ -519,6 +521,7 @@ class Bar(Window):
             "date_time": self.date_time,
             "button_power": self.button_power,
             "sysprofiles": self.sysprofiles,
+            "goto_free": self.goto_free
         }
         secondary_exclusions = {"weather", "battery", "systray", "metrics", "sysprofiles", "language", "button_overview"}
         for component_name, widget in components.items():
