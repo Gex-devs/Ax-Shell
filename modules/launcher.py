@@ -199,7 +199,15 @@ class AppLauncher(Box):
         remove_handler(self._arranger_handler) if self._arranger_handler else None
         self.viewport.children = []
         self.selected_index = -1
-
+        self._live_calc_expr = None
+        self._live_calc_result = None
+        
+        if not query.startswith((">", "?")):
+            result_str = self.try_evaluate_math(query)
+            if result_str is not None:
+                self.show_live_calculation(query.strip(), result_str)
+                return
+        
         q = query.strip()
 
         if query.startswith(">"):
@@ -940,3 +948,94 @@ class AppLauncher(Box):
             exec_shell_command_async(cmd)
             return False  # Stop GLib timeout after one execution
         GLib.timeout_add(150, _do_focus)
+
+    _MATH_FUNC_WORDS = ("sin", "cos", "tan", "log", "ln", "sqrt", "abs", "exp", "pi")
+
+    def looks_like_math(self, text: str) -> bool:
+        t = text.strip()
+        if not t or not re.search(r'\d', t):
+            return False
+        if not re.search(r'[\+\-\*/\^%!×÷]', t):
+            return False  # bare numbers stay as normal app search, not math
+        stripped = t
+        for w in self._MATH_FUNC_WORDS:
+            stripped = stripped.replace(w, "")
+        if re.search(r'[a-zA-Z]', stripped):
+            return False  # leftover letters -> real search text, not math
+        return True
+
+    def try_evaluate_math(self, text: str):
+        if not self.looks_like_math(text):
+            return None
+        return self._try_math_eval(text)
+
+    def _try_math_eval(self, expr: str):
+        """Same sanitization/eval as evaluate_calculator_expression, but returns
+        None on failure instead of an 'Error: ...' string, so partial/incomplete
+        expressions just fall through to normal search while you're still typing."""
+        expr = expr.strip()
+        if not expr:
+            return None
+
+        replacements = {
+            "^": "**", "×": "*", "÷": "/", "π": "np.pi", "pi": "np.pi",
+            "e": "np.e", "sin(": "np.sin(", "cos(": "np.cos(", "tan(": "np.tan(",
+            "log(": "np.log10(", "ln(": "np.log(", "sqrt(": "np.sqrt(",
+            "abs(": "np.abs(", "exp(": "np.exp("
+        }
+        for old, new in replacements.items():
+            expr = expr.replace(old, new)
+
+        expr = re.sub(r'(\d+)!', r'np.factorial(\1)', expr)
+
+        for old, new in [("[", "("), ("]", ")"), ("{", "("), ("}", ")")]:
+            expr = expr.replace(old, new)
+
+        safe_dict = {'np': np, 'math': math, 'arange': np.arange, 'linspace': np.linspace, 'array': np.array}
+
+        try:
+            result = eval(expr, {"__builtins__": None}, safe_dict)
+        except Exception:
+            return None
+
+        if isinstance(result, np.ndarray):
+            return f"Array of shape {result.shape}" if result.size > 10 else str(result)
+        if isinstance(result, (int, float, np.number)):
+            if isinstance(result, (int, np.integer)) or float(result).is_integer():
+                return str(int(result))
+            return f"{float(result):.10g}"
+        return str(result)
+    def show_live_calculation(self, expr: str, result_str: str):
+        self._live_calc_expr = expr
+        self._live_calc_result = result_str
+        btn = Button(
+            name="slot-button",
+            child=Box(
+                name="calc-slot-box",
+                orientation="h",
+                spacing=10,
+                children=[
+                    Label(
+                        name="calc-label",
+                        label=f"{expr} = {result_str}",
+                        ellipsization="end",
+                        v_align="center",
+                        h_align="center",
+                    ),
+                ],
+            ),
+            tooltip_text="Press Enter to copy result",
+            on_clicked=lambda *_: self._commit_live_calculation(),
+        )
+        self.viewport.add(btn)
+        self.update_selection(0)
+
+    def _commit_live_calculation(self):
+        expr = getattr(self, "_live_calc_expr", None)
+        result_str = getattr(self, "_live_calc_result", None)
+        if expr is None or result_str is None:
+            return
+        entry_text = f"{expr} => {result_str}"
+        self.copy_text_to_clipboard(entry_text)
+        self.calc_history.insert(0, entry_text)
+        self.save_calc_history()

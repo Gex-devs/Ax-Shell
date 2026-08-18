@@ -123,6 +123,7 @@ class WindowsVm(EventBox):
         """Toggles the revealers open or closed when the widget is clicked."""
         if event.type == Gdk.EventType._2BUTTON_PRESS: 
             if event.button == 1:
+                "Placeholder for future click to run script"
                 exec_shell_command_async("kitty")
                 return True
          
