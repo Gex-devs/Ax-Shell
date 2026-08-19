@@ -3,9 +3,11 @@ import concurrent.futures
 import hashlib
 import os
 import random  # <--- AÑADIDO
+import re
 import shutil
 import subprocess
 import json
+import threading
 from concurrent.futures import ThreadPoolExecutor
 
 from fabric.utils.helpers import exec_shell_command_async
@@ -57,6 +59,8 @@ class WallpaperSelector(Box):
         self.thumbnails = []
         self.thumbnail_queue = []
         self.executor = ThreadPoolExecutor(max_workers=4)  # Shared executor
+        self._openrgb_devices_cache = None  # populated lazily, refreshed on demand
+        self._openrgb_lock = threading.Lock()  # serialize openrgb CLI calls
 
         # Variable to control the selection (similar to AppLauncher)
         self.selected_index = -1
@@ -659,21 +663,117 @@ class WallpaperSelector(Box):
 
         # Save the state to the dedicated file
         try:
+            os.makedirs(os.path.dirname(data.MATUGEN_STATE_FILE), exist_ok=True)
             with open(data.MATUGEN_STATE_FILE, "w") as f:
                 f.write(str(is_active))
         except Exception as e:
             print(f"Error writing matugen state file: {e}")
 
+    def _list_openrgb_devices(self) -> list[dict]:
+        """Parse `openrgb --list-devices` into a list of per-device dicts:
+        {index, name, led_count, modes}. Works for any device type
+        (mouse, keyboard, headset, etc), not just one hardcoded device.
+        """
+        devices = []
+        try:
+            result = subprocess.run(
+                ["openrgb", "--list-devices"], capture_output=True, text=True, timeout=10, check=False
+            )
+        except Exception as e:
+            print(f"[WallpaperSelector] openrgb --list-devices failed: {e}")
+            return devices
+
+        current = None
+        header_re = re.compile(r"^(\d+):\s+(.*)$")
+        for raw_line in result.stdout.splitlines():
+            header_match = header_re.match(raw_line)
+            if header_match:
+                if current is not None:
+                    devices.append(current)
+                current = {
+                    "index": int(header_match.group(1)),
+                    "name": header_match.group(2).strip(),
+                    "led_count": 0,
+                    "modes": [],
+                }
+                continue
+            if current is None:
+                continue
+            stripped = raw_line.strip()
+            if stripped.startswith("LEDs:"):
+                names = re.findall(r"'[^']*'", stripped)
+                current["led_count"] = len(names)
+            elif stripped.startswith("Modes:"):
+                # e.g. "Modes: [Direct] Off Static Cycle Breathing Wave Colormixing"
+                mode_text = stripped[len("Modes:"):].strip()
+                current["modes"] = [m.strip("[]") for m in mode_text.split()]
+        if current is not None:
+            devices.append(current)
+        return devices
+
+    def _get_logitech_openrgb_devices(self, force_refresh: bool = False) -> list[dict]:
+        """Cached device discovery — --list-devices spawns openrgb and talks to
+        the SDK server, which is the slowest part of this whole flow. Hardware
+        doesn't change between clicks in a session, so only re-scan when asked."""
+        if force_refresh or self._openrgb_devices_cache is None:
+            self._openrgb_devices_cache = self._list_openrgb_devices()
+        return [d for d in self._openrgb_devices_cache if "logitech" in d["name"].lower()]
+
+    def set_logitech_devices_color(self, hex_color: str):
+        """Apply hex_color to every Logitech device OpenRGB can see —
+        mouse, keyboard, headset, whatever's connected — adapting the
+        LED count and mode to each device automatically.
+
+        Runs on a background thread (see on_apply_color_clicked); all
+        devices are set in a single openrgb invocation to avoid paying
+        the SDK-connection cost once per device."""
+        if shutil.which("openrgb") is None:
+            print("[WallpaperSelector] openrgb not found, skipping peripheral color sync")
+            return
+
+        clean_hex = hex_color.lstrip("#")
+        logitech_devices = self._get_logitech_openrgb_devices()
+
+        if not logitech_devices:
+            # Cache might be stale (device plugged in after first scan) — retry once.
+            logitech_devices = self._get_logitech_openrgb_devices(force_refresh=True)
+        if not logitech_devices:
+            print("[WallpaperSelector] No Logitech devices found via OpenRGB")
+            return
+
+        cmd = ["openrgb"]
+        for device in logitech_devices:
+            led_count = device["led_count"] or 1
+            supports_direct = any(m.lower() == "direct" for m in device["modes"])
+            mode = "direct" if supports_direct else "static"
+            color_arg = ",".join([clean_hex] * led_count)
+            cmd += ["--device", str(device["index"]), "--mode", mode, "--color", color_arg]
+
+        with self._openrgb_lock:
+            try:
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, timeout=10, check=False
+                )
+                if result.returncode != 0:
+                    print(
+                        f"[WallpaperSelector] openrgb failed (code {result.returncode}): "
+                        f"{result.stderr.strip()}"
+                    )
+                else:
+                    names = ", ".join(d["name"] for d in logitech_devices)
+                    print(f"[WallpaperSelector] openrgb applied to: {names}")
+            except Exception as e:
+                print(f"[WallpaperSelector] openrgb error: {e}")
+
     def on_apply_color_clicked(self, button):
-        """Applies the color selected by the hue slider via matugen."""
-        hue_value = self.hue_slider.get_value()  # Get value from 0-360
-        hex_color = self.hsl_to_rgb_hex(hue_value)  # Convert HSL(hue, 1.0, 0.5) to HEX
+        """Applies the color selected by the hue slider to both the screen theme and RGB peripherals."""
+        hue_value = self.hue_slider.get_value()
+        hex_color = self.hsl_to_rgb_hex(hue_value)
         print(f"Applying color from slider: H={hue_value}, HEX={hex_color}")
+
         selected_scheme = self.scheme_dropdown.get_active_id()
-        # Run matugen with the chosen hex color and selected scheme
-        exec_shell_command_async(
-            f'matugen color hex "{hex_color}" -t {selected_scheme}'
-        )
-        # Optionally save the chosen color to config if needed later
-        # config.config.bind_vars["matugen_hex_color"] = hex_color
-        # config.config.save_config() # Removed as save_config doesn't exist
+        exec_shell_command_async(f'matugen color hex "{hex_color}" -t {selected_scheme}')
+        # Offload to the shared thread pool — openrgb's CLI has to spin up and
+        # talk to the SDK server, which is what caused the ~300ms UI freeze
+        # when this ran inline on the GTK main thread.
+        self.executor.submit(self.set_logitech_devices_color, hex_color)
