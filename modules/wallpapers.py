@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import json
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from fabric.utils.helpers import exec_shell_command_async
@@ -711,36 +712,19 @@ class WallpaperSelector(Box):
             devices.append(current)
         return devices
 
-    def _get_logitech_openrgb_devices(self, force_refresh: bool = False) -> list[dict]:
-        """Cached device discovery — --list-devices spawns openrgb and talks to
-        the SDK server, which is the slowest part of this whole flow. Hardware
-        doesn't change between clicks in a session, so only re-scan when asked."""
+    def _get_logitech_openrgb_devices(self, force_refresh: bool = True) -> list[dict]:
+        """Device discovery. Defaults to a fresh scan every call: after a
+        replug, OpenRGB can hand out a different index/handle for the same
+        device name, and a stale cached index will silently no-op instead
+        of erroring. This now runs on a background thread (see
+        on_apply_color_clicked), so the ~150-300ms scan no longer costs
+        any UI responsiveness — only worth caching if you explicitly pass
+        force_refresh=False."""
         if force_refresh or self._openrgb_devices_cache is None:
             self._openrgb_devices_cache = self._list_openrgb_devices()
         return [d for d in self._openrgb_devices_cache if "logitech" in d["name"].lower()]
 
-    def set_logitech_devices_color(self, hex_color: str):
-        """Apply hex_color to every Logitech device OpenRGB can see —
-        mouse, keyboard, headset, whatever's connected — adapting the
-        LED count and mode to each device automatically.
-
-        Runs on a background thread (see on_apply_color_clicked); all
-        devices are set in a single openrgb invocation to avoid paying
-        the SDK-connection cost once per device."""
-        if shutil.which("openrgb") is None:
-            print("[WallpaperSelector] openrgb not found, skipping peripheral color sync")
-            return
-
-        clean_hex = hex_color.lstrip("#")
-        logitech_devices = self._get_logitech_openrgb_devices()
-
-        if not logitech_devices:
-            # Cache might be stale (device plugged in after first scan) — retry once.
-            logitech_devices = self._get_logitech_openrgb_devices(force_refresh=True)
-        if not logitech_devices:
-            print("[WallpaperSelector] No Logitech devices found via OpenRGB")
-            return
-
+    def _build_openrgb_color_cmd(self, logitech_devices: list[dict], clean_hex: str) -> list[str]:
         cmd = ["openrgb"]
         for device in logitech_devices:
             led_count = device["led_count"] or 1
@@ -748,22 +732,52 @@ class WallpaperSelector(Box):
             mode = "direct" if supports_direct else "static"
             color_arg = ",".join([clean_hex] * led_count)
             cmd += ["--device", str(device["index"]), "--mode", mode, "--color", color_arg]
+        return cmd
+
+    def set_logitech_devices_color(self, hex_color: str):
+        """Apply hex_color to every Logitech device OpenRGB can see —
+        mouse, keyboard, headset, whatever's connected — adapting the
+        LED count and mode to each device automatically.
+
+        Runs on a background thread (see on_apply_color_clicked). Sends
+        the color command twice with a short gap: OpenRGB has a known
+        race on Linux right after a device is hotplugged where the first
+        write lands before the device is fully initialized and silently
+        no-ops, leaving the mouse showing whatever color was last stored
+        in its onboard memory. The second write, ~300ms later, reliably
+        catches it once detection has settled."""
+        if shutil.which("openrgb") is None:
+            print("[WallpaperSelector] openrgb not found, skipping peripheral color sync")
+            return
+
+        clean_hex = hex_color.lstrip("#")
+        logitech_devices = self._get_logitech_openrgb_devices(force_refresh=True)
+
+        if not logitech_devices:
+            print("[WallpaperSelector] No Logitech devices found via OpenRGB")
+            return
+
+        cmd = self._build_openrgb_color_cmd(logitech_devices, clean_hex)
 
         with self._openrgb_lock:
-            try:
-                result = subprocess.run(
-                    cmd, capture_output=True, text=True, timeout=10, check=False
-                )
-                if result.returncode != 0:
-                    print(
-                        f"[WallpaperSelector] openrgb failed (code {result.returncode}): "
-                        f"{result.stderr.strip()}"
+            for attempt in (1, 2):
+                try:
+                    result = subprocess.run(
+                        cmd, capture_output=True, text=True, timeout=10, check=False
                     )
-                else:
-                    names = ", ".join(d["name"] for d in logitech_devices)
-                    print(f"[WallpaperSelector] openrgb applied to: {names}")
-            except Exception as e:
-                print(f"[WallpaperSelector] openrgb error: {e}")
+                    if result.returncode != 0:
+                        print(
+                            f"[WallpaperSelector] openrgb attempt {attempt} failed "
+                            f"(code {result.returncode}): {result.stderr.strip()}"
+                        )
+                    else:
+                        names = ", ".join(d["name"] for d in logitech_devices)
+                        print(f"[WallpaperSelector] openrgb attempt {attempt} applied to: {names}")
+                except Exception as e:
+                    print(f"[WallpaperSelector] openrgb error on attempt {attempt}: {e}")
+                    break
+                if attempt == 1:
+                    time.sleep(0.3)
 
     def on_apply_color_clicked(self, button):
         """Applies the color selected by the hue slider to both the screen theme and RGB peripherals."""
