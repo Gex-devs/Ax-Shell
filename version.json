@@ -2,6 +2,6 @@
   "version": "0.0.63",
   "pkg_update": false,
   "changelog": [
-    "<b>refactor:</b> Reverted VM controls back to GTK menu"
+    "<b>refactor:</b> Fixed wallpaper slider setting mouse color... works with g203 lightsync and now should be universal... hopefully"
   ]
 }
