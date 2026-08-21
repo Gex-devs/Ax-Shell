@@ -27,6 +27,7 @@ from widgets.wayland import WaylandWindow as Window
 from modules.windowsvm import WindowsVm
 from services.logitech import Logitech
 from modules.goto_free import GotoFree
+from config.data import load_config
 CHINESE_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "〇"]
 
 # Tooltips
@@ -55,7 +56,9 @@ tooltip_overview = """<b>Overview</b>"""
 class Bar(Window):
     def __init__(self, monitor_id: int = 0, **kwargs):
         self.monitor_id = monitor_id
-        
+        config = load_config()
+        self.full_bar = config.get("full_bar",0)
+        print(f"primary monitor on bar:{self.monitor_id}")
         super().__init__(
             name="bar",
             layer="top",
@@ -528,7 +531,7 @@ class Bar(Window):
             if component_name in self.component_visibility:
                 is_visible = self.component_visibility[component_name]
                 
-                if self.monitor_id != 0 and component_name in secondary_exclusions:
+                if self.monitor_id != self.full_bar and component_name in secondary_exclusions:
                     is_visible = False
                 widget.set_visible(is_visible)
 

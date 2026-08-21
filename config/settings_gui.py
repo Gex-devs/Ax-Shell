@@ -1150,6 +1150,7 @@ class HyprConfGUI(Window):
         )
 
         current_bind_vars_snapshot["primary_monitor"] = 0
+        current_bind_vars_snapshot["full_bar"] = 0
         selected_icon_path = self.selected_face_icon
         replace_lock = self.lock_switch and self.lock_switch.get_active()
         replace_idle = self.idle_switch and self.idle_switch.get_active()

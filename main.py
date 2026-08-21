@@ -105,7 +105,8 @@ if __name__ == "__main__":
         monitor_id = monitor['id']
         
         #TODO: Add it in config.json as an option
-        primaryMonitor_id = 2
+        primaryMonitor_id = int(config.get("primary_monitor",0))
+        print(f"Primary monitor id:{primaryMonitor_id}")
 
         # Create corners only for the primary monitor (shared across all)
         if monitor_id == primaryMonitor_id:
