@@ -100,4 +100,6 @@ DEFAULTS = {
     "limited_apps_history": ["Spotify"],
     "history_ignored_apps": ["Hyprshot"],
     "selected_monitors": [],
+    "primary_monitor": 0,
+    "full_bar":0
 }

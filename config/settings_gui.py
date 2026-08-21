@@ -1149,6 +1149,7 @@ class HyprConfGUI(Window):
             selected_monitors if any_checked else []
         )
 
+        current_bind_vars_snapshot["primary_monitor"] = 0
         selected_icon_path = self.selected_face_icon
         replace_lock = self.lock_switch and self.lock_switch.get_active()
         replace_idle = self.idle_switch and self.idle_switch.get_active()
