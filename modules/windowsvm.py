@@ -12,7 +12,7 @@ from scripts.virt import VmMonitorService
 libvirt.virEventRegisterDefaultImpl()
 
 # Hardcoded VM name — change this to match your VM in `virsh list --all`
-VM_NAME = "vm1"
+VM_NAME = "workstation"
 
 
 class WindowsVm(EventBox):
