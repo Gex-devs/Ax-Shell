@@ -57,7 +57,7 @@ class Bar(Window):
     def __init__(self, monitor_id: int = 0, **kwargs):
         self.monitor_id = monitor_id
         config = load_config()
-        self.full_bar = config.get("full_bar",0)
+        self.primary_monitor = config.get("primary_monitor",0)
         print(f"primary monitor on bar:{self.monitor_id}")
         super().__init__(
             name="bar",
@@ -169,14 +169,20 @@ class Bar(Window):
                 else Workspaces.default_buttons_factory
             ),
         )
-
+        self.current_workspace_label = Label(
+            name="current-workspace-label",
+            label="",
+            h_align="center",
+            v_align="center"
+        )
+        
         self.ws_container = Box(
             name="workspaces-container",
             children=(
-                self.workspaces
-                if not data.BAR_WORKSPACE_SHOW_NUMBER
-                else self.workspaces_num
-            ),
+        (self.workspaces if not data.BAR_WORKSPACE_SHOW_NUMBER else self.workspaces_num)
+        if self.monitor_id == self.primary_monitor
+        else self.current_workspace_label
+    ),
         )
 
         self.button_tools = Button(
@@ -507,6 +513,9 @@ class Bar(Window):
 
         self.systray._update_visibility()
         self.chinese_numbers()
+        self.connection.connect("event::workspace", self.update_monitor_workspace)
+        self.connection.connect("event::focusedmon", self.update_monitor_workspace)
+        GLib.timeout_add(100, self.update_monitor_workspace)
 
     def apply_component_props(self):
         components = {
@@ -531,7 +540,7 @@ class Bar(Window):
             if component_name in self.component_visibility:
                 is_visible = self.component_visibility[component_name]
                 
-                if self.monitor_id != self.full_bar and component_name in secondary_exclusions:
+                if self.monitor_id != self.primary_monitor and component_name in secondary_exclusions:
                     is_visible = False
                 widget.set_visible(is_visible)
 
@@ -643,3 +652,31 @@ class Bar(Window):
             self.workspaces_num.add_style_class("chinese")
         else:
             self.workspaces_num.remove_style_class("chinese")
+            
+    def update_monitor_workspace(self, *args):
+        if self.monitor_id == self.primary_monitor:
+            for workspace_widget in (self.workspaces, self.workspaces_num):
+                for i in range(self.start_workspace, self.end_workspace):
+                    btn = workspace_widget.lookup_or_bake_button(i)
+                    if btn is not None:
+                        btn.set_visible(True)
+                        if btn.active:
+                            btn.add_style_class("active")
+                        else:
+                            btn.remove_style_class("active")
+        else:
+            import subprocess, json
+            try:
+                out = subprocess.check_output(["hyprctl", "monitors", "-j"]).decode("utf-8")
+                monitors = json.loads(out)
+                this_monitor = next((m for m in monitors if m["id"] == self.monitor_id), None)
+                if this_monitor is not None:
+                    active_workspace = this_monitor["activeWorkspace"]["id"]
+                    self.current_workspace_label.set_label(str(active_workspace))
+                    if this_monitor.get("focused", False):
+                        self.current_workspace_label.add_style_class("active")
+                    else:
+                        self.current_workspace_label.remove_style_class("active")
+            except Exception:
+                pass
+        return True
