@@ -114,12 +114,13 @@ class MonitorManager:
             
             for i, monitor in enumerate(hypr_monitors):
                 monitor_name = monitor.get('name', f'monitor-{i}')
+                real_id = monitor.get('id',i)
                 
                 # Get scale directly from Hyprland (more reliable)
                 hypr_scale = monitor.get('scale', 1.0)
                 
                 self._monitors.append({
-                    'id': i,
+                    'id': real_id,
                     'name': monitor_name,
                     'width': monitor.get('width', 1920),
                     'height': monitor.get('height', 1080),
@@ -130,9 +131,9 @@ class MonitorManager:
                 })
                 
                 # Initialize states for new monitors
-                if i not in self._notch_states:
-                    self._notch_states[i] = False
-                    self._current_notch_module[i] = None
+                if real_id not in self._notch_states:
+                    self._notch_states[real_id] = False
+                    self._current_notch_module[real_id] = None
                     
         except (subprocess.CalledProcessError, json.JSONDecodeError, FileNotFoundError) as e:
             print(f"[Ax-Shell] MonitorManager: hyprctl monitors failed: {type(e).__name__}: {e}")
@@ -212,32 +213,39 @@ class MonitorManager:
         return self.get_monitor_by_id(self._focused_monitor_id)
     
     def get_workspace_range_for_monitor(self, monitor_id: int) -> Tuple[int, int]:
-        """
-        Get workspace range for a monitor (10 workspaces per monitor).
-        
-        Args:
-            monitor_id: Monitor ID
-            
-        Returns:
-            Tuple of (start_workspace, end_workspace)
-        """
-        start = (monitor_id * 10) + 1
-        end = start + 9
-        return (start, end)
+        """Reads the real workspace-to-monitor assignment from Hyprland
+        itself (set via hardcoded `workspace = N, monitor:X` rules in
+        hyprland.conf), instead of recomputing our own guess. This keeps
+        the bar's displayed range and Hyprland's actual routing permanently
+        in sync — the .conf rules are now the single source of truth."""
+        try:
+            result = subprocess.run(
+                ["hyprctl", "workspaces", "-j"],
+                capture_output=True, text=True, check=True
+            )
+            workspaces = json.loads(result.stdout)
+            ids = sorted(
+                w["id"] for w in workspaces
+                if w.get("monitorID") == monitor_id and w["id"] > 0
+            )
+            if ids:
+                return (min(ids), max(ids) + 1)
+        except Exception as e:
+            print(f"[MonitorManager] Failed to read workspace assignment: {e}")
+
+        # Fallback only if hyprctl query fails for some reason
+        return (monitor_id * 5 + 1, monitor_id * 5 + 6)
     
-    def get_monitor_for_workspace(self, workspace_id: int) -> int:
-        """
-        Get monitor ID for a workspace.
-        
-        Args:
-            workspace_id: Workspace number
-            
-        Returns:
-            Monitor ID
-        """
+    def get_monitor_for_workspace(
+    self, workspace_id: int, primary_monitor_id: int = 0, workspaces_per_monitor: int = 5
+) -> int:
         if workspace_id <= 0:
-            return 0
-        return (workspace_id - 1) // 10
+            return primary_monitor_id
+        for m in self._monitors:
+            start, end = self.get_workspace_range_for_monitor(m['id'], primary_monitor_id, workspaces_per_monitor)
+            if start <= workspace_id < end:
+                return m['id']
+        return primary_monitor_id
     
     def get_monitor_scale(self, monitor_id: int) -> float:
         """
@@ -323,6 +331,27 @@ class MonitorManager:
                     notch.open_module(old_module)
         
         self.notch_focus_changed.emit(old_monitor, new_monitor)
+    def get_gdk_monitor_index(self, monitor_id: int) -> int:
+        """Fabric's WaylandWindow(monitor=...) expects a raw GDK monitor-list
+        index, not Hyprland's own numeric id — these are two different
+        numbering systems that can diverge (especially with headless/virtual
+        outputs). Correlate by physical position, which both sides agree on."""
+        monitor = self.get_monitor_by_id(monitor_id)
+        if monitor is None:
+            return 0
+
+        try:
+            display = Gdk.Display.get_default()
+            n = display.get_n_monitors()
+            for i in range(n):
+                gdk_mon = display.get_monitor(i)
+                geo = gdk_mon.get_geometry()
+                if geo.x == monitor["x"] and geo.y == monitor["y"]:
+                    return i
+        except Exception as e:
+            print(f"[MonitorManager] get_gdk_monitor_index failed: {e}")
+
+        return 0
 
 
 # Singleton accessor

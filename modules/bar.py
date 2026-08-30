@@ -58,6 +58,10 @@ class Bar(Window):
         self.monitor_id = monitor_id
         config = load_config()
         self.primary_monitor = config.get("primary_monitor",0)
+        from utils.monitor_manager import get_monitor_manager
+        
+        monitor_manager = get_monitor_manager()
+        gdk_idx = monitor_manager.get_gdk_monitor_index(self.monitor_id)
         print(f"primary monitor on bar:{self.monitor_id}")
         super().__init__(
             name="bar",
@@ -65,7 +69,7 @@ class Bar(Window):
             exclusivity="auto",
             visible=True,
             all_visible=True,
-            monitor=monitor_id,
+            monitor=gdk_idx,
         )
 
         self.anchor_var = ""
@@ -110,9 +114,14 @@ class Bar(Window):
 
         # Calculate workspace range based on monitor_id
         # Monitor 0: workspaces 1-10, Monitor 1: workspaces 11-20, etc.
-        start_workspace = self.monitor_id * 5   + 1
-        end_workspace = start_workspace + 5  
-        workspace_range = range(start_workspace, end_workspace)
+        # start_workspace = self.monitor_id * 5   + 1
+        # end_workspace = start_workspace + 5  
+        
+        start_workspace, end_workspace = monitor_manager.get_workspace_range_for_monitor(self.monitor_id)
+        self.start_workspace = start_workspace
+        self.end_workspace = end_workspace
+        workspace_range = range(self.start_workspace, self. end_workspace)
+        
 
         self.workspaces = Workspaces(
             name="workspaces",
@@ -155,9 +164,9 @@ class Bar(Window):
                     v_align="center",
                     id=i,
                     label=(
-                        CHINESE_NUMERALS[(i - start_workspace)]
+                        CHINESE_NUMERALS[(i - self.start_workspace)]
                         if data.BAR_WORKSPACE_USE_CHINESE_NUMERALS
-                        and 0 <= (i - start_workspace) < len(CHINESE_NUMERALS)
+                        and 0 <= (i - self.start_workspace) < len(CHINESE_NUMERALS)
                         else str(i)
                     ),
                 )
@@ -535,7 +544,8 @@ class Bar(Window):
             "sysprofiles": self.sysprofiles,
             "goto_free": self.goto_free
         }
-        secondary_exclusions = {"weather", "battery", "systray", "metrics", "sysprofiles", "language", "button_overview"}
+        #"button_overview" added back for testing
+        secondary_exclusions = {"weather", "battery", "systray", "metrics", "sysprofiles", "language" }
         for component_name, widget in components.items():
             if component_name in self.component_visibility:
                 is_visible = self.component_visibility[component_name]
