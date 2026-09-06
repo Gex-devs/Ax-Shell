@@ -52,9 +52,12 @@ class MixerSlider(Scale):
         self.set_size_request(-1, 30)  # Fixed height for sliders
 
         self.connect("value-changed", self.on_value_changed)
-        # Watchdog runs first so it sees the just-recorded target before
-        # the UI handler below reads stream.volume back.
-        if self.root_watchdog and getattr(stream, "name", None)!= "Spotify":
+        # Watchdog only guards application streams (e.g. Spotify reverting its
+        # own volume). Hardware sinks/sources (speaker, BT headset, microphone)
+        # are device nodes — nothing should be fighting their volume, and wiring
+        # the watchdog to them caused the slider to lock up on those devices.
+        is_app_stream = hasattr(stream, "type") and "application" in stream.type.lower()
+        if self.root_watchdog and is_app_stream and getattr(stream, "name", None) != "Spotify":
             stream.connect("changed", lambda s: self.root_watchdog.enforce_stream(s))
         stream.connect("changed", self.on_stream_changed)
 
@@ -89,8 +92,11 @@ class MixerSlider(Scale):
         vol_str = f"{display_vol}"
 
         # Record the target BEFORE writing the volume — see note above.
+        # Only track application streams; hardware sinks (speaker, BT headset)
+        # must never be added to watched_apps or the watchdog will fight the user.
         app_name = getattr(self.stream, "name", None)
-        if app_name and self.root_watchdog and app_name != "Spotify": 
+        is_app_stream = hasattr(self.stream, "type") and "application" in self.stream.type.lower()
+        if app_name and self.root_watchdog and is_app_stream and app_name != "Spotify":
             self.root_watchdog.set_target(app_name, display_vol)
 
         self.stream.volume = self.value * 100
@@ -134,12 +140,23 @@ class MixerSection(Box):
             spacing=8,
             h_expand=True,
         )
+        self.section_title = title
         self.title_label = Label(
             name="mixer-section-title",
             label=title,
             h_expand=True,
             h_align="start",
         )
+        # Wrap the label in an EventBox so it can receive clicks (a bare
+        # Label has no window of its own and won't get button-press-event).
+        self.title_event_box = Gtk.EventBox()
+        self.title_event_box.set_visible_window(False)
+        self.title_event_box.add(self.title_label)
+        self.title_event_box.connect("button-press-event", self.toggle_tab)
+        self.title_event_box.connect("realize", self._on_title_realize)
+        display = Gdk.Display.get_default()
+        self._pointer_cursor = Gdk.Cursor.new_from_name(display, "pointer") if display else None
+
         self.stack = Gtk.Stack()
         self.stack.set_transition_type(Gtk.StackTransitionType.CROSSFADE)
         self.content_box = Box(
@@ -155,25 +172,28 @@ class MixerSection(Box):
         self.stack.add_named(self.devices_box, "devices")
 
         self.is_devices_tab = False
-        self.tab_btn = Button(
-            label="Devices",
-            on_clicked=self.toggle_tab
-        )
-        self.header_box.add(self.title_label)
-        self.header_box.add(self.tab_btn)
+        self.header_box.add(self.title_event_box)
 
         self.add(self.header_box)
         self.add(self.stack)
         self.watchdog = watchdog
 
-    def toggle_tab(self, btn):
+    def _on_title_realize(self, widget):
+        if self._pointer_cursor:
+            gdk_window = widget.get_window()
+            if gdk_window:
+                gdk_window.set_cursor(self._pointer_cursor)
+
+    def toggle_tab(self, *args):
         self.is_devices_tab = not self.is_devices_tab
         if self.is_devices_tab:
             self.stack.set_visible_child_name("devices")
-            btn.set_label("Streams")
+            self.title_label.set_label("Devices")
+            self.title_label.add_style_class("devices-active")
         else:
             self.stack.set_visible_child_name("streams")
-            btn.set_label("Devices")
+            self.title_label.set_label(self.section_title)
+            self.title_label.remove_style_class("devices-active")
     def update_devices(self):
         for child in self.devices_box.get_children():
             self.devices_box.remove(child)
