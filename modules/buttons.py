@@ -349,96 +349,100 @@ class NightModeButton(Button):
             GLib.idle_add(self.night_mode_status.set_label, "Disabled")
             GLib.idle_add(self._add_disabled_style)
 
+class CaffeineService:
+    """Single source of truth for caffeine/inhibit state.
+    All CaffeineButton instances share this one object so they
+    stay in sync regardless of which monitor's button was clicked."""
+
+    _instance = None
+
+    @classmethod
+    def get(cls):
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def __init__(self):
+        self._enabled = False
+        self._callbacks: list = []
+        # Check real state once at startup
+        GLib.Thread.new("caffeine-init", self._check_thread, None)
+
+    def register(self, callback):
+        """Register a callback to be called with (enabled: bool) on state change."""
+        self._callbacks.append(callback)
+        # Immediately sync the new subscriber to current state
+        GLib.idle_add(callback, self._enabled)
+
+    def _notify_all(self, enabled: bool):
+        self._enabled = enabled
+        for cb in self._callbacks:
+            GLib.idle_add(cb, enabled)
+
+    def toggle(self, external=False):
+        GLib.Thread.new("caffeine-toggle", self._toggle_thread, external)
+
+    def _toggle_thread(self, external):
+        try:
+            subprocess.check_output(["pgrep", "ax-inhibit"])
+            exec_shell_command_async("pkill ax-inhibit")
+            GLib.idle_add(self._notify_all, False)
+            if external:
+                exec_shell_command_async(
+                    f"notify-send '☕ Caffeine' 'Disabled 💤' -a '{data.APP_NAME_CAP}' -e"
+                )
+        except subprocess.CalledProcessError:
+            exec_shell_command_async(
+                f"python {data.HOME_DIR}/.config/{data.APP_NAME_CAP}/scripts/inhibit.py"
+            )
+            GLib.idle_add(self._notify_all, True)
+            if external:
+                exec_shell_command_async(
+                    f"notify-send '☕ Caffeine' 'Enabled ☀️' -a '{data.APP_NAME_CAP}' -e"
+                )
+
+    def _check_thread(self, _):
+        try:
+            subprocess.check_output(["pgrep", "ax-inhibit"])
+            GLib.idle_add(self._notify_all, True)
+        except subprocess.CalledProcessError:
+            GLib.idle_add(self._notify_all, False)
+
 class CaffeineButton(Button):
     def __init__(self):
-        self.caffeine_icon = Label(
-            name="caffeine-icon",
-            markup=icons.coffee,
-        )
-        self.caffeine_label = Label(
-            name="caffeine-label",
-            label="Caffeine",
-            justification="left",
-        )
+        self.caffeine_icon = Label(name="caffeine-icon", markup=icons.coffee)
+        self.caffeine_label = Label(name="caffeine-label", label="Caffeine", justification="left")
         self.caffeine_label_box = Box(children=[self.caffeine_label, Box(h_expand=True)])
-        self.caffeine_status = Label(
-            name="caffeine-status",
-            label="Enabled",
-            justification="left",
-        )
+        self.caffeine_status = Label(name="caffeine-status", label="...", justification="left")
         self.caffeine_status_box = Box(children=[self.caffeine_status, Box(h_expand=True)])
         self.caffeine_text = Box(
-            name="caffeine-text",
-            orientation="v",
-            h_align="start",
-            v_align="center",
+            name="caffeine-text", orientation="v", h_align="start", v_align="center",
             children=[self.caffeine_label_box, self.caffeine_status_box],
         )
         self.caffeine_box = Box(
-            h_align="start",
-            v_align="center",
-            spacing=10,
+            h_align="start", v_align="center", spacing=10,
             children=[self.caffeine_icon, self.caffeine_text],
         )
         super().__init__(
             name="caffeine-button",
             h_expand=True,
             child=self.caffeine_box,
-            on_clicked=self.toggle_inhibit,
+            on_clicked=lambda *_: CaffeineService.get().toggle(),
         )
         add_hover_cursor(self)
 
-        self.widgets = [self, self.caffeine_label, self.caffeine_status, self.caffeine_icon]
-        self.check_inhibit()
+        self._styled_widgets = [self, self.caffeine_label, self.caffeine_status, self.caffeine_icon]
 
-    def toggle_inhibit(self, *args, external=False):
-        """
-        Toggle the 'ax-inhibit' process:
-          - If running, kill it and mark as 'Disabled' (add 'disabled' class).
-          - If not running, start it and mark as 'Enabled' (remove 'disabled' class).
-        """
-        GLib.Thread.new("caffeine-toggle", self._toggle_inhibit_thread, external)
-    
-    def _toggle_inhibit_thread(self, external):
-        """Background thread to toggle inhibit without blocking UI."""
-        try:
-            subprocess.check_output(["pgrep", "ax-inhibit"])
-            exec_shell_command_async("pkill ax-inhibit")
-            GLib.idle_add(self.caffeine_status.set_label, "Disabled")
-            GLib.idle_add(self._add_disabled_style)
-        except subprocess.CalledProcessError:
-            exec_shell_command_async(f"python {data.HOME_DIR}/.config/{data.APP_NAME_CAP}/scripts/inhibit.py")
-            GLib.idle_add(self.caffeine_status.set_label, "Enabled")
-            GLib.idle_add(self._remove_disabled_style)
+        # Register with the shared service — immediately synced, and notified on every future change
+        CaffeineService.get().register(self._on_state_changed)
 
-        if external:
-            # Different if enabled or disabled
-            status = "Disabled" if self.caffeine_status.get_label() == "Disabled" else "Enabled"
-            message = "Disabled 💤" if status == "Disabled" else "Enabled ☀️"
-            exec_shell_command_async(f"notify-send '☕ Caffeine' '{message}' -a '{data.APP_NAME_CAP}' -e")
-    
-    def _add_disabled_style(self):
-        """Helper to add disabled style to all widgets."""
-        for widget in self.widgets:
-            widget.add_style_class("disabled")
-    
-    def _remove_disabled_style(self):
-        """Helper to remove disabled style from all widgets."""
-        for widget in self.widgets:
-            widget.remove_style_class("disabled")
-
-    def check_inhibit(self, *args):
-        GLib.Thread.new("caffeine-check", self._check_inhibit_thread, None)
-    
-    def _check_inhibit_thread(self, user_data):
-        """Background thread to check inhibit status without blocking UI."""
-        try:
-            subprocess.check_output(["pgrep", "ax-inhibit"])
-            GLib.idle_add(self.caffeine_status.set_label, "Enabled")
-            GLib.idle_add(self._remove_disabled_style)
-        except subprocess.CalledProcessError:
-            GLib.idle_add(self.caffeine_status.set_label, "Disabled")
-            GLib.idle_add(self._add_disabled_style)
+    def _on_state_changed(self, enabled: bool):
+        self.caffeine_status.set_label("Enabled" if enabled else "Disabled")
+        for widget in self._styled_widgets:
+            if enabled:
+                widget.remove_style_class("disabled")
+            else:
+                widget.add_style_class("disabled")
 
 class Buttons(Gtk.Grid):
     def __init__(self, **kwargs):
