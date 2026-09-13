@@ -3,8 +3,12 @@ import concurrent.futures
 import hashlib
 import os
 import random  # <--- AÑADIDO
+import re
 import shutil
 import subprocess
+import json
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from fabric.utils.helpers import exec_shell_command_async
@@ -27,6 +31,17 @@ class WallpaperSelector(Box):
     def __init__(self, **kwargs):
         # Delete the old cache directory if it exists
         old_cache_dir = f"{data.CACHE_DIR}/wallpapers"
+        # Per screen wallpaper
+        self.monitor_dropdown = Gtk.ComboBoxText()
+        self.monitor_dropdown.set_name("monitor-dropdown")
+        self.monitor_dropdown.append("all", "All Monitors")
+        try:
+            mons = json.loads(subprocess.check_output(["hyprctl", "monitors", "-j"]))
+            for m in mons:
+                self.monitor_dropdown.append(m["name"], m["name"])
+        except Exception:
+            pass
+        self.monitor_dropdown.set_active_id("all")
         if os.path.exists(old_cache_dir):
             shutil.rmtree(old_cache_dir)
 
@@ -45,6 +60,8 @@ class WallpaperSelector(Box):
         self.thumbnails = []
         self.thumbnail_queue = []
         self.executor = ThreadPoolExecutor(max_workers=4)  # Shared executor
+        self._openrgb_devices_cache = None  # populated lazily, refreshed on demand
+        self._openrgb_lock = threading.Lock()  # serialize openrgb CLI calls
 
         # Variable to control the selection (similar to AppLauncher)
         self.selected_index = -1
@@ -147,6 +164,7 @@ class WallpaperSelector(Box):
                 self.search_entry,
                 self.scheme_dropdown,
                 self.matugen_switcher,
+                self.monitor_dropdown,
             ],
         )
 
@@ -206,6 +224,8 @@ class WallpaperSelector(Box):
         self.randomize_dice_icon()
         # Ensure the search entry gets focus when starting
         self.search_entry.grab_focus()
+        
+        
 
     def _load_wallpapers_async(self):
         """Non-blocking wallpaper processing."""
@@ -302,31 +322,20 @@ class WallpaperSelector(Box):
                 print(f"Warning: matugen failed for wallpaper {full_path}: {exc}")
 
         # Also try awww if present, but do not depend on it.
-        if os.path.exists("/tmp/hypr"):
+        target_mon = getattr(self, "monitor_dropdown", None)
+        selected_output = target_mon.get_active_id() if target_mon else "all"
+        if os.getenv("HYPRLAND_INSTANCE_SIGNATURE"):
+            awww_cmd = [
+                "awww", "img", full_path, "-t","outer",
+                "--transition-duration","1.5","--transition-step","255",
+                "--transition-fps", "60", "-f","Nearest"
+            ]
+            if selected_output and selected_output != "all":
+                awww_cmd.extend(["-o",selected_output])
             try:
-                subprocess.run(
-                    [
-                        "awww",
-                        "img",
-                        full_path,
-                        "-t",
-                        "outer",
-                        "--transition-duration",
-                        "1.5",
-                        "--transition-step",
-                        "255",
-                        "--transition-fps",
-                        "60",
-                        "-f",
-                        "Nearest",
-                    ],
-                    check=True,
-                    capture_output=True,
-                    text=True,
-                    timeout=20,
-                )
-            except Exception as exc:
-                print(f"Warning: awww failed for wallpaper {full_path}: {exc}")
+                subprocess.run(awww_cmd, check=True, capture_output=True, text=True, timeout=20)
+            except Exception as e:
+                print(f"Warning: awww failed for wallpaper {full_path}: {e}")
 
     def set_random_wallpaper(self, widget, external=False):
         if not self.files:
@@ -655,21 +664,117 @@ class WallpaperSelector(Box):
 
         # Save the state to the dedicated file
         try:
+            os.makedirs(os.path.dirname(data.MATUGEN_STATE_FILE), exist_ok=True)
             with open(data.MATUGEN_STATE_FILE, "w") as f:
                 f.write(str(is_active))
         except Exception as e:
             print(f"Error writing matugen state file: {e}")
 
+    def _list_openrgb_devices(self) -> list[dict]:
+        """Parse `openrgb --list-devices` into a list of per-device dicts:
+        {index, name, led_count, modes}. Works for any device type
+        (mouse, keyboard, headset, etc), not just one hardcoded device.
+        """
+        devices = []
+        try:
+            result = subprocess.run(
+                ["openrgb", "--list-devices"], capture_output=True, text=True, timeout=10, check=False
+            )
+        except Exception as e:
+            print(f"[WallpaperSelector] openrgb --list-devices failed: {e}")
+            return devices
+
+        current = None
+        header_re = re.compile(r"^(\d+):\s+(.*)$")
+        for raw_line in result.stdout.splitlines():
+            header_match = header_re.match(raw_line)
+            if header_match:
+                if current is not None:
+                    devices.append(current)
+                current = {
+                    "index": int(header_match.group(1)),
+                    "name": header_match.group(2).strip(),
+                    "led_count": 0,
+                    "modes": [],
+                }
+                continue
+            if current is None:
+                continue
+            stripped = raw_line.strip()
+            if stripped.startswith("LEDs:"):
+                names = re.findall(r"'[^']*'", stripped)
+                current["led_count"] = len(names)
+            elif stripped.startswith("Modes:"):
+                # e.g. "Modes: [Direct] Off Static Cycle Breathing Wave Colormixing"
+                mode_text = stripped[len("Modes:"):].strip()
+                current["modes"] = [m.strip("[]") for m in mode_text.split()]
+        if current is not None:
+            devices.append(current)
+        return devices
+
+    def _get_openrgb_devices(self, force_refresh: bool = True) -> list[dict]:
+        """Device discovery. Defaults to a fresh scan every call: after a
+        replug, OpenRGB can hand out a different index/handle for the same
+        device name, and a stale cached index will silently no-op instead
+        of erroring. This now runs on a background thread (see
+        on_apply_color_clicked), so the ~150-300ms scan no longer costs
+        any UI responsiveness — only worth caching if you explicitly pass
+        force_refresh=False."""
+        if force_refresh or self._openrgb_devices_cache is None:
+            self._openrgb_devices_cache = self._list_openrgb_devices()
+        return self._openrgb_devices_cache
+
+    def _build_openrgb_color_cmd(self, logitech_devices: list[dict], clean_hex: str) -> list[str]:
+        cmd = ["openrgb"]
+        for device in logitech_devices:
+            led_count = device["led_count"] or 1
+            supports_direct = any(m.lower() == "direct" for m in device["modes"])
+            mode = "direct" if supports_direct else "static"
+            color_arg = ",".join([clean_hex] * led_count)
+            cmd += ["--device", str(device["index"]), "--mode", mode, "--color", color_arg]
+        return cmd
+
+    def set_all_devices_color(self, hex_color: str):
+        if shutil.which("openrgb") is None:
+            print("[WallpaperSelector] openrgb not found, skipping peripheral color sync")
+            return
+
+        clean_hex = hex_color.lstrip("#")
+        devices = self._get_openrgb_devices(force_refresh=True)
+
+        if not devices:
+            print("[WallpaperSelector] No devices found via OpenRGB")
+            return
+
+        cmd = self._build_openrgb_color_cmd(devices, clean_hex)
+
+        with self._openrgb_lock:
+            for attempt in (1, 2):
+                try:
+                    result = subprocess.run(
+                        cmd, capture_output=True, text=True, timeout=10, check=False
+                    )
+                except Exception as e:
+                    print(f"[WallpaperSelector] openrgb error on attempt {attempt}: {e}")
+                    break
+
+                if result.returncode == 0:
+                    names = ", ".join(d["name"] for d in devices)
+                    print(f"[WallpaperSelector] openrgb applied to: {names} (attempt {attempt})")
+                    break  # success — no need for a second write
+                else:
+                    print(
+                        f"[WallpaperSelector] openrgb attempt {attempt} failed "
+                        f"(code {result.returncode}): {result.stderr.strip()}"
+                    )
+                    if attempt == 1:
+                        time.sleep(0.3)  # only sleep+retry if the first attempt actually failed
     def on_apply_color_clicked(self, button):
-        """Applies the color selected by the hue slider via matugen."""
-        hue_value = self.hue_slider.get_value()  # Get value from 0-360
-        hex_color = self.hsl_to_rgb_hex(hue_value)  # Convert HSL(hue, 1.0, 0.5) to HEX
+        """Applies the color selected by the hue slider to both the screen theme and RGB peripherals."""
+        hue_value = self.hue_slider.get_value()
+        hex_color = self.hsl_to_rgb_hex(hue_value)
         print(f"Applying color from slider: H={hue_value}, HEX={hex_color}")
+
         selected_scheme = self.scheme_dropdown.get_active_id()
-        # Run matugen with the chosen hex color and selected scheme
-        exec_shell_command_async(
-            f'matugen color hex "{hex_color}" -t {selected_scheme}'
-        )
-        # Optionally save the chosen color to config if needed later
-        # config.config.bind_vars["matugen_hex_color"] = hex_color
-        # config.config.save_config() # Removed as save_config doesn't exist
+        exec_shell_command_async(f'matugen color hex "{hex_color}" -t {selected_scheme}')
+        self.executor.submit(self.set_all_devices_color, hex_color)

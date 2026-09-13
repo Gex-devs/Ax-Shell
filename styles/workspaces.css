@@ -100,3 +100,20 @@
 #workspaces-num > button.urgent > label {
   color: var(--error-dim);
 }
+#current-workspace-label {
+    color: var(--foreground);
+    font-weight: bold;
+    font-size: 10pt;
+    min-width: 32px;
+    min-height: 20px;
+    border-radius: 8px;
+    padding: 2px 2px;
+  }
+  
+  #current-workspace-label.active {
+    min-width: 26px;
+    min-height: 14px;
+    margin: 6px;
+    background-color: var(--primary);
+    color: var(--shadow);
+}

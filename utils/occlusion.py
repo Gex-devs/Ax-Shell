@@ -45,16 +45,16 @@ def get_screen_dimensions():
         # Find the monitor containing our workspace
         for monitor in monitors:
             if monitor.get("activeWorkspace", {}).get("id") == workspace_id:
-                return monitor.get("width", data.CURRENT_WIDTH), monitor.get("height", data.CURRENT_HEIGHT)
+                return monitor.get("width", data.CURRENT_X), monitor.get("height", data.CURRENT_Y)
                 
         # Fallback to first monitor
         if monitors:
-            return monitors[0].get("width", data.CURRENT_WIDTH), monitors[0].get("height", data.CURRENT_HEIGHT)
+            return monitors[0].get("width", data.CURRENT_X), monitors[0].get("height", data.CURRENT_Y)
     except Exception as e:
         print(f"Error getting screen dimensions: {e}")
     
     # Default fallback values
-    return data.CURRENT_WIDTH, data.CURRENT_HEIGHT
+    return data.CURRENT_X, data.CURRENT_Y
 
 def get_screen_position():
     """

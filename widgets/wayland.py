@@ -81,13 +81,20 @@ class WaylandWindow(Window):
     @monitor.setter
     def monitor(self, monitor: int | Gdk.Monitor) -> bool:
         if isinstance(monitor, int):
+            print(f"[Ax-Shell] WaylandWindow.monitor setter got index={monitor}")
             display = Gdk.Display().get_default()
             monitor = display.get_monitor(monitor)
-        return (
+            print(
+                f"[Ax-Shell] WaylandWindow.monitor resolved index={monitor} "
+                f"to model={monitor.get_model() if monitor else None}"
+            )
+        result = (
             (GtkLayerShell.set_monitor(self, monitor), True)[1]
             if monitor is not None
             else False
         )
+        print(f"[Ax-Shell] WaylandWindow.monitor set result={result}, monitor={monitor}")
+        return result
 
     @Property(WaylandWindowExclusivity, "read-write")
     def exclusivity(self) -> WaylandWindowExclusivity:

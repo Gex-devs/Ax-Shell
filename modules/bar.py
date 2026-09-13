@@ -24,7 +24,10 @@ from modules.systemtray import SystemTray
 from modules.weather import Weather
 from modules.windowsvm import WindowsVm
 from widgets.wayland import WaylandWindow as Window
+from modules.windowsvm import WindowsVm
 from services.logitech import Logitech
+from modules.goto_free import GotoFree
+from config.data import load_config
 CHINESE_NUMERALS = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "〇"]
 
 # Tooltips
@@ -53,14 +56,20 @@ tooltip_overview = """<b>Overview</b>"""
 class Bar(Window):
     def __init__(self, monitor_id: int = 0, **kwargs):
         self.monitor_id = monitor_id
+        config = load_config()
+        self.primary_monitor = config.get("primary_monitor",0)
+        from utils.monitor_manager import get_monitor_manager
         
+        monitor_manager = get_monitor_manager()
+        gdk_idx = monitor_manager.get_gdk_monitor_index(self.monitor_id)
+        print(f"primary monitor on bar:{self.monitor_id}")
         super().__init__(
             name="bar",
             layer="top",
             exclusivity="auto",
             visible=True,
             all_visible=True,
-            monitor=monitor_id,
+            monitor=gdk_idx,
         )
 
         self.anchor_var = ""
@@ -105,9 +114,14 @@ class Bar(Window):
 
         # Calculate workspace range based on monitor_id
         # Monitor 0: workspaces 1-10, Monitor 1: workspaces 11-20, etc.
-        start_workspace = self.monitor_id * 1   + 1
-        end_workspace = start_workspace + 1  
-        workspace_range = range(start_workspace, end_workspace)
+        # start_workspace = self.monitor_id * 5   + 1
+        # end_workspace = start_workspace + 5  
+        
+        start_workspace, end_workspace = monitor_manager.get_workspace_range_for_monitor(self.monitor_id)
+        self.start_workspace = start_workspace
+        self.end_workspace = end_workspace
+        workspace_range = range(self.start_workspace, self. end_workspace)
+        
 
         self.workspaces = Workspaces(
             name="workspaces",
@@ -150,9 +164,9 @@ class Bar(Window):
                     v_align="center",
                     id=i,
                     label=(
-                        CHINESE_NUMERALS[(i - start_workspace)]
+                        CHINESE_NUMERALS[(i - self.start_workspace)]
                         if data.BAR_WORKSPACE_USE_CHINESE_NUMERALS
-                        and 0 <= (i - start_workspace) < len(CHINESE_NUMERALS)
+                        and 0 <= (i - self.start_workspace) < len(CHINESE_NUMERALS)
                         else str(i)
                     ),
                 )
@@ -164,14 +178,20 @@ class Bar(Window):
                 else Workspaces.default_buttons_factory
             ),
         )
-
+        self.current_workspace_label = Label(
+            name="current-workspace-label",
+            label="",
+            h_align="center",
+            v_align="center"
+        )
+        
         self.ws_container = Box(
             name="workspaces-container",
             children=(
-                self.workspaces
-                if not data.BAR_WORKSPACE_SHOW_NUMBER
-                else self.workspaces_num
-            ),
+        (self.workspaces if not data.BAR_WORKSPACE_SHOW_NUMBER else self.workspaces_num)
+        if self.monitor_id == self.primary_monitor
+        else self.current_workspace_label
+    ),
         )
 
         self.button_tools = Button(
@@ -188,7 +208,7 @@ class Bar(Window):
         self.systray = SystemTray()
 
         self.weather = Weather()
-
+        self.goto_free = GotoFree()
         self.network = NetworkApplet()
         self.sysprofiles = Systemprofiles()
         self.lang_label = Label(name="lang-label")
@@ -199,7 +219,7 @@ class Bar(Window):
         self.on_language_switch()
         self.connection.connect("event::activelayout", self.on_language_switch)
 
-        # self.windowsvm = WindowsVm()
+        self.windowsvm = WindowsVm()
 
         # Determine date-time format based on the new setting
         if data.DATETIME_12H_FORMAT:
@@ -282,8 +302,9 @@ class Bar(Window):
         self.rev_left = [
             self.weather,
             self.sysprofiles,
+            self.windowsvm,
             self.network,
-            # self.windowsvm,
+            self.goto_free
         ]
 
         self.revealer_left = Revealer(
@@ -328,7 +349,7 @@ class Bar(Window):
             self.control,
             self.sysprofiles,
             self.network,
-            # self.windowsvm,
+            self.windowsvm,
             self.button_tools,
         ]
 
@@ -501,6 +522,9 @@ class Bar(Window):
 
         self.systray._update_visibility()
         self.chinese_numbers()
+        self.connection.connect("event::workspace", self.update_monitor_workspace)
+        self.connection.connect("event::focusedmon", self.update_monitor_workspace)
+        GLib.timeout_add(100, self.update_monitor_workspace)
 
     def apply_component_props(self):
         components = {
@@ -518,11 +542,17 @@ class Bar(Window):
             "date_time": self.date_time,
             "button_power": self.button_power,
             "sysprofiles": self.sysprofiles,
+            "goto_free": self.goto_free
         }
-
+        #"button_overview" added back for testing
+        secondary_exclusions = {"weather", "battery", "systray", "metrics", "sysprofiles", "language" }
         for component_name, widget in components.items():
             if component_name in self.component_visibility:
-                widget.set_visible(self.component_visibility[component_name])
+                is_visible = self.component_visibility[component_name]
+                
+                if self.monitor_id != self.primary_monitor and component_name in secondary_exclusions:
+                    is_visible = False
+                widget.set_visible(is_visible)
 
     def toggle_component_visibility(self, component_name):
         components = {
@@ -632,3 +662,31 @@ class Bar(Window):
             self.workspaces_num.add_style_class("chinese")
         else:
             self.workspaces_num.remove_style_class("chinese")
+            
+    def update_monitor_workspace(self, *args):
+        if self.monitor_id == self.primary_monitor:
+            for workspace_widget in (self.workspaces, self.workspaces_num):
+                for i in range(self.start_workspace, self.end_workspace):
+                    btn = workspace_widget.lookup_or_bake_button(i)
+                    if btn is not None:
+                        btn.set_visible(True)
+                        if btn.active:
+                            btn.add_style_class("active")
+                        else:
+                            btn.remove_style_class("active")
+        else:
+            import subprocess, json
+            try:
+                out = subprocess.check_output(["hyprctl", "monitors", "-j"]).decode("utf-8")
+                monitors = json.loads(out)
+                this_monitor = next((m for m in monitors if m["id"] == self.monitor_id), None)
+                if this_monitor is not None:
+                    active_workspace = this_monitor["activeWorkspace"]["id"]
+                    self.current_workspace_label.set_label(str(active_workspace))
+                    if this_monitor.get("focused", False):
+                        self.current_workspace_label.add_style_class("active")
+                    else:
+                        self.current_workspace_label.remove_style_class("active")
+            except Exception:
+                pass
+        return True

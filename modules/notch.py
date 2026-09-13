@@ -528,13 +528,16 @@ class Notch(Window):
         self.add(inner_content)
         self.show_all()
 
-        self.backdrop = NotchBackdrop(notch_instance=self, monitor_id=monitor_id)
+        # grayed out the bottom part to test out whether multiple backdrop approach is better
+        # self.backdrop = NotchBackdrop(notch_instance=self, monitor_id=monitor_id)
+        self.backdrops = []
 
         # Connect audio signals after a short delay
         GLib.timeout_add(100, self._connect_audio_signals)
 
         self.add_keybinding("Escape", lambda *_: self.close_notch())
-        # NOTE: focus-out-event listener has been removed from here
+        # NOTE: use focus-out-event that is grayed out here incase you want to make the close when it loses focus.
+        # self.connect("focus-out-event", lambda *_: self.close_notch())
         self.add_keybinding("Ctrl Tab", lambda *_: self.dashboard.go_to_next_child())
         self.add_keybinding(
             "Ctrl Shift ISO_Left_Tab", lambda *_: self.dashboard.go_to_previous_child()
@@ -878,8 +881,7 @@ class Notch(Window):
             self.monitor_manager.set_notch_state(self.monitor_id, False)
             
         self.set_keyboard_mode("none")
-        if hasattr(self, "backdrop") and self.backdrop:
-            self.backdrop.hide()
+        self._hide_backdrops()
         self.notch_box.remove_style_class("open")
         self.stack.remove_style_class("open")
 
@@ -966,8 +968,15 @@ class Notch(Window):
         self._focused_monitor_result = None
     
     def _open_notch_internal(self, widget_name: str):
-        if hasattr(self, "backdrop") and self.backdrop:
-            self.backdrop.show_all()
+        def force_focus_main():
+            if focus_action:
+                focus_action()
+            else:
+                self.grab_focus()
+            self.set_keyboard_mode("on-demand")
+            return False
+        
+        self._show_backdrops()
         self.notch_revealer.set_reveal_child(True)
         self.notch_box.add_style_class("open")
         self.stack.add_style_class("open")
@@ -982,13 +991,7 @@ class Notch(Window):
                 ):
                     self.close_notch()
                     return
-
-                self.set_keyboard_mode("on-demand")
-                def force_focus():
-                    self.present()
-                    self.grab_focus()
-                    return False
-                GLib.timeout_add(50, force_focus)
+                GLib.idle_add(lambda: (GLib.timeout_add(10, force_focus_main), False)[1])
                 self.dashboard.go_to_section("widgets")
                 self.applet_stack.set_visible_child(self.nwconnections)
                 return
@@ -1001,13 +1004,7 @@ class Notch(Window):
                 ):
                     self.close_notch()
                     return
-
-                self.set_keyboard_mode("on-demand")
-                def force_focus():
-                    self.present()
-                    self.grab_focus()
-                    return False
-                GLib.timeout_add(50, force_focus)
+                GLib.idle_add(lambda: (GLib.timeout_add(10, force_focus_main), False)[1])
                 self.dashboard.go_to_section("widgets")
                 self.applet_stack.set_visible_child(self.btdevices)
                 return
@@ -1022,11 +1019,7 @@ class Notch(Window):
                     return
 
                 self.set_keyboard_mode("on-demand")
-                def force_focus():
-                    self.present()
-                    self.grab_focus()
-                    return False
-                GLib.timeout_add(50, force_focus)
+                GLib.idle_add(lambda: (GLib.timeout_add(10, force_focus_main), False)[1])
                 self.dashboard.go_to_section("widgets")
                 self.applet_stack.set_visible_child(self.nhistory)
                 return
@@ -1100,16 +1093,7 @@ class Notch(Window):
 
         if action_on_open:
             action_on_open()
-        def force_focus_main():
-            if focus_action:
-                focus_action()
-            self.set_keyboard_mode("on-demand")
-        GLib.timeout_add(50, force_focus_main)
-
-        if action_on_open:
-            action_on_open()
-        if focus_action:
-            GLib.timeout_add(50, lambda:(focus_action(), False)[1])
+        GLib.idle_add(lambda: (GLib.timeout_add(10, force_focus_main), False)[1])
 
         if target_widget_on_stack == self.dashboard:
             if widget_name == "bluetooth":
@@ -1524,6 +1508,20 @@ class Notch(Window):
                 return True
 
         return False
+    def _show_backdrops(self):
+        self._hide_backdrops()
+        display = Gdk.Display.get_default()
+        n_monitors = display.get_n_monitors() if display else 1
+
+        for m_id in range(n_monitors):
+            bd = NotchBackdrop(notch_instance=self, monitor_id=m_id)
+            bd.show_all()
+            self.backdrops.append(bd)
+    def _hide_backdrops(self):
+        for bd in self.backdrops:
+            bd.destroy()
+        self.backdrops.clear()
+
 
 class NotchBackdrop(Window):
     def __init__(self, notch_instance, monitor_id: int = 0):
@@ -1547,7 +1545,7 @@ class NotchBackdrop(Window):
         bg_box = Box(
             h_expand=True,
             v_expand=True,
-            style="background-color: rgba(0, 0, 0, 0.5);",  # Semi-transparent black
+            style="background-color: rgba(0, 0, 0, 0);",  # Semi-transparent black
         )
         bg_catcher.add(bg_box)
         self.add(bg_catcher)
