@@ -45,10 +45,12 @@ def get_windows_on_workspace(workspace_id: int) -> list[str]:
 
 
 def move_window_to_workspace(address: str, workspace_id: int):
-    hyprctl(
-        "dispatch",
-        f'hl.dsp.window.move({{ workspace = {workspace_id}, window = "address:{address}" }})'
-    )
+    # Use the raw IPC socket format instead of hyprctl dispatch,
+    # which changed its syntax in Hyprland 0.55+
+    subprocess.run([
+        "hyprctl", "dispatch", "movetoworkspacesilent",
+        f"{workspace_id},address:{address}"
+    ], capture_output=True, text=True)
 
 
 def find_safe_temp_workspace() -> int:
