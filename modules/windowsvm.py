@@ -56,7 +56,8 @@ class WindowsVm(EventBox):
         if event.type == Gdk.EventType._2BUTTON_PRESS and event.button == 1:
             # Placeholder for future double-click action
             # Chains standard shell tools and sends a direct legacy window dispatch rule
-            exec_shell_command_async('bash -c "code & sleep 0.5 && hyprctl dispatch \'hl.dsp.window.fullscreen({ mode = 0 })\'"')
+            # exec_shell_command_async('bash -c "code & sleep 0.5 && hyprctl dispatch \'hl.dsp.window.fullscreen({ mode = 0 })\'"')
+            exec_shell_command_async('bash -c "looking-glass-client -f"')
             return True
         elif event.type == Gdk.EventType.BUTTON_PRESS and event.button == 3:
             self._show_context_menu(widget, event)
