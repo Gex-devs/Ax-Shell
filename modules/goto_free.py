@@ -27,21 +27,20 @@ class GotoFree(Button):
         try:
             reply = self.connection.send_command("j/version").reply
             version_data = json.loads(reply.decode("utf-8"))
-            v_str = version_data.get("version", "v0.0.0").lstrip("v").split("-")[0]
-            parts = v_str.split(".")
-            minor_version = int(parts[1]) if len(parts) > 1 else 0
-            print(f"[BULSHITTING]{minor_version}")
-            return minor_version>=54
+            # configProvider tells us the actual active config format,
+            # not just whether Lua *could* be used based on version number
+            config_provider = version_data.get("configProvider", "hyprlang")
+            print(f"[GotoFree] configProvider={config_provider!r}")
+            return config_provider.lower() == "lua"
         except Exception:
             return False
     def get_free_id(self) -> int:
         reply = self.connection.send_command("j/workspaces").reply
         self.workspaces = json.loads(reply.decode("utf-8"))
-        active_ids = [w["id"] for w in self.workspaces]
-        return next(i for i in range(1,100) if i not in active_ids)
+        occupied_ids = [w["id"] for w in self.workspaces if w.get("windows",0)>0]
+        return next(i for i in range (1,100) if i not in occupied_ids)
     def on_button_click(self):
         free_id = self.get_free_id()
-        
         if self.is_lua():
             exec_shell_command_async(f'hyprctl dispatch "hl.dsp.focus({{workspace = {free_id}}})"')
         else:
