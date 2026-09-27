@@ -243,7 +243,8 @@ class Overview(Box):
         self.workspace_end = 6
         # Number of extra workspace slots appended via the "+" tile,
         # beyond the fixed core range (workspace_start..core_end).
-        self.extra_workspace_count = 0
+        # self.extra_workspace_count = 0
+        self.extra_workspace_ids: set[int] = set()
         
         # Get monitor manager and workspace range
         try:
@@ -425,8 +426,11 @@ class Overview(Box):
         core_start = self.workspace_start
         core_end = min(self.workspace_start + 5, self.workspace_end)  # exclusive
         core_ids = list(range(core_start, core_end))
-        extra_slot_ids = [core_end + i for i in range(self.extra_workspace_count)]
-        scan_end = max(self.workspace_end, core_end + self.extra_workspace_count)
+        extra_slot_ids = sorted(self.extra_workspace_ids)
+        scan_end = max(
+            self.workspace_end,
+            (max(extra_slot_ids) + 1) if extra_slot_ids else core_end,
+        )
 
         # Filter clients to only show those in this monitor's workspace range
         for client in json.loads(connection.send_command("j/clients").reply.decode()):
@@ -468,6 +472,17 @@ class Overview(Box):
         render_ids = core_ids + extra_slot_ids + occupied_extra_ids
 
         for idx, w_id in enumerate(render_ids):
+            header_children = [Label(name="overview-workspace-label", label=f"Workspace {w_id}")]
+            if w_id not in core_ids:
+                header_children.append(
+                    Button(
+                        name="overview-workspace-remove",
+                        label="✕",  # swap for an icon markup (like AddWorkspaceBox's icons.circle_plus) if you want visual parity
+                        on_clicked=lambda _, wid=w_id: self._remove_workspace_slot(wid),
+                    )
+                )
+            header = Box(orientation="horizontal", spacing=4, children=header_children)
+
             if rows == 2:
                 row = 0 if idx < cols else 1
             else:
@@ -478,7 +493,7 @@ class Overview(Box):
                     name="overview-workspace-box",
                     orientation="vertical",
                     children=[
-                        Label(name="overview-workspace-label", label=f"Workspace {w_id}"),
+                        header,
                         WorkspaceEventBox(
                             w_id,
                             self.workspace_boxes.get(w_id),
@@ -517,9 +532,36 @@ class Overview(Box):
         """Handle a click on the "+" tile: append the next sequential
         workspace slot in the overview only. The real Hyprland workspace
         isn't created/focused until a window is actually dropped onto it."""
-        self.extra_workspace_count += 1
+        core_end = min(self.workspace_start + 5, self.workspace_end)
+        new_workspace_id = max([core_end - 1, *self.extra_workspace_ids]) + 1
+        self.extra_workspace_ids.add(new_workspace_id)
         self.update()
 
     def do_update(self, *_):
         logger.info(f"[Overview] Updating for :{_[1].name}")
         self.update(signal_update=True)
+    
+    def _remove_workspace_slot(self, w_id: int):
+        """Remove an extra (non-core) workspace tile. Core workspaces
+        (the first 5) never get this — this method refuses them as a
+        safety guard even if something calls it by mistake."""
+        core_end = min(self.workspace_start + 5, self.workspace_end)
+        if w_id < core_end:
+            return
+
+        # Move any windows off this workspace before dropping the slot.
+        for client in json.loads(connection.send_command("j/clients").reply.decode()):
+            if client["workspace"]["id"] == w_id:
+                connection.send_command(
+                    f"/dispatch movetoworkspacesilent {self.workspace_start},address:{client['address']}"
+                )
+
+        # If it's currently the focused workspace, hop back to a core one first —
+        # otherwise Hyprland keeps an empty-but-focused workspace alive, same
+        # issue as before with the "+" tile.
+        active = json.loads(connection.send_command("j/activeworkspace").reply.decode())
+        if active.get("id") == w_id:
+            connection.send_command(f"/dispatch workspace {self.workspace_start}")
+
+        self.extra_workspace_ids.discard(w_id)
+        self.update()
