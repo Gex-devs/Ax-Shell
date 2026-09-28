@@ -48,6 +48,13 @@ class MixerSlider(Scale):
         self.stream = stream
         self._updating_from_stream = False
         self.root_watchdog = watchdog
+        self._user_is_dragging = False
+        self._last_user_input = 0.0
+        self._write_source = None
+        self._pending_volume = None
+        self.connect("button-press-event", self._on_press)
+        self.connect("button-release-event", self._on_release)
+        
         self.set_value(stream.volume / 100)
         self.set_size_request(-1, 30)  # Fixed height for sliders
 
@@ -56,7 +63,7 @@ class MixerSlider(Scale):
         # own volume). Hardware sinks/sources (speaker, BT headset, microphone)
         # are device nodes — nothing should be fighting their volume, and wiring
         # the watchdog to them caused the slider to lock up on those devices.
-        is_app_stream = hasattr(stream, "type") and "application" in stream.type.lower()
+        is_app_stream = hasattr(stream, "type") and "application" in self.stream.type.lower()
         if self.root_watchdog and is_app_stream and getattr(stream, "name", None) != "Spotify":
             stream.connect("changed", lambda s: self.root_watchdog.enforce_stream(s))
         stream.connect("changed", self.on_stream_changed)
@@ -72,50 +79,110 @@ class MixerSlider(Scale):
         self.set_tooltip_text(f"{stream.volume:.0f}%")
         self.update_muted_state()
 
+    # def on_scroll(self, widget, event):
+    #     if event.direction == Gdk.ScrollDirection.SMOOTH:
+    #         _, _, dy = event.get_scroll_deltas()
+    #         step = -0.02 if dy > 0 else 0.02
+    #     else:
+    #         step = 0.02 if event.direction == Gdk.ScrollDirection.UP else -0.02
+
+    #     self.set_value(max(0.0, min(1.0, self.get_value() + step)))
+    #     return True
+
+    # def on_value_changed(self, _):
+    #     if self._updating_from_stream:
+    #         return
+    #     if not self.stream:
+    #         return
+
+    #     display_vol = int(self.value * 100)
+    #     vol_str = f"{display_vol}"
+
+    #     # Record the target BEFORE writing the volume — see note above.
+    #     # Only track application streams; hardware sinks (speaker, BT headset)
+    #     # must never be added to watched_apps or the watchdog will fight the user.
+    #     app_name = getattr(self.stream, "name", None)
+    #     is_app_stream = hasattr(self.stream, "type") and "application" in self.stream.type.lower()
+    #     if app_name and self.root_watchdog and is_app_stream and app_name != "Spotify":
+    #         self.root_watchdog.set_target(app_name, display_vol)
+
+    #     self.stream.volume = self.value * 100
+
+    #     self.set_tooltip_text(vol_str)
+    #     if self.bind_label:
+    #         self.bind_label.set_label(f"[{vol_str}] {self.label_text}")
+
+    # def on_stream_changed(self, stream):
+    #     self._updating_from_stream = True
+    #     self.value = stream.volume / 100
+    #     display_vol = int(stream.volume)
+    #     vol_str = f"{display_vol}"
+
+    #     self.set_tooltip_text(vol_str)
+    #     if self.bind_label:
+    #         self.bind_label.set_label(f"[{vol_str}] {self.label_text}")
+    #     self.update_muted_state()
+    #     self._updating_from_stream = False
+    
+    ECHO_GRACE_S = 0.25
+    WRITE_THROTTLE_MS = 40
+    
+    def _on_press(self,*_):
+        self._user_is_dragging = True
+        return False
+    def _on_release(self, *_):
+        self._user_is_dragging = False
+        self._last_user_input = time.monotonic()
+        return False
+    def _interacting(self):
+        return self._user_is_dragging or (time.monotonic() - self._last_user_input) < self.ECHO_GRACE_S
     def on_scroll(self, widget, event):
         if event.direction == Gdk.ScrollDirection.SMOOTH:
             _, _, dy = event.get_scroll_deltas()
+            if dy == 0:
+                return True
             step = -0.02 if dy > 0 else 0.02
         else:
             step = 0.02 if event.direction == Gdk.ScrollDirection.UP else -0.02
-
+        self._last_user_input = time.monotonic()
         self.set_value(max(0.0, min(1.0, self.get_value() + step)))
         return True
-
+        
     def on_value_changed(self, _):
-        if self._updating_from_stream:
+        if self._updating_from_stream or not self.stream:
             return
-        if not self.stream:
-            return
-
+        self._last_user_input = time.monotonic()
         display_vol = int(self.value * 100)
-        vol_str = f"{display_vol}"
-
-        # Record the target BEFORE writing the volume — see note above.
-        # Only track application streams; hardware sinks (speaker, BT headset)
-        # must never be added to watched_apps or the watchdog will fight the user.
+        
         app_name = getattr(self.stream, "name", None)
         is_app_stream = hasattr(self.stream, "type") and "application" in self.stream.type.lower()
         if app_name and self.root_watchdog and is_app_stream and app_name != "Spotify":
             self.root_watchdog.set_target(app_name, display_vol)
-
-        self.stream.volume = self.value * 100
-
-        self.set_tooltip_text(vol_str)
+        self._pending_volume = self.value * 100
+        if self._write_source is None:
+            self._write_source = GLib.timeout_add(self.WRITE_THROTTLE_MS, self._flush_write)
+        self.set_tooltip_text(f"{display_vol}%")
         if self.bind_label:
-            self.bind_label.set_label(f"[{vol_str}] {self.label_text}")
-
+            self.bind_label.set_label(f"[{display_vol}%] {self.label_text}")
+    def _flush_write(self):
+        self._write_source = None
+        if self._pending_volume is not None:
+            self.stream.volume = self._pending_volume
+            self._pending_volume = None
+        return False
     def on_stream_changed(self, stream):
-        self._updating_from_stream = True
-        self.value = stream.volume / 100
-        display_vol = int(stream.volume)
-        vol_str = f"{display_vol}"
-
-        self.set_tooltip_text(vol_str)
-        if self.bind_label:
-            self.bind_label.set_label(f"[{vol_str}] {self.label_text}")
         self.update_muted_state()
-        self._updating_from_stream = False
+        if self._interacting():
+            return
+        self._updating_from_stream = True
+        try:
+            self.value = stream.volume / 100
+            vol_str = f"{int(stream.volume)}%"
+            self.set_tooltip_text(vol_str)
+            if self.bind_label:
+                self.bind_label.set_label(f"[{vol_str}] {self.label_text}")
+        finally:
+            self._updating_from_stream = False
 
     def update_muted_state(self):
         if self.stream.muted:
